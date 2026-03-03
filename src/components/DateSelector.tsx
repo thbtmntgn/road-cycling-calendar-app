@@ -1,11 +1,11 @@
 import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  Dimensions
+  Dimensions,
 } from 'react-native';
 import { formatDateForDisplay } from '../utils/dateUtils';
 
@@ -16,24 +16,20 @@ interface DateSelectorProps {
 }
 
 const { width } = Dimensions.get('window');
-const DATE_ITEM_WIDTH = width / 4; // Show approximately 4 dates at once
+const DATE_ITEM_WIDTH = Math.max(96, Math.floor(width / 4));
+const DATE_ITEM_GAP = 10;
+const DATE_TRACK_PADDING = Math.max(16, width / 2 - DATE_ITEM_WIDTH / 2);
+const DATE_ITEM_STRIDE = DATE_ITEM_WIDTH + DATE_ITEM_GAP;
 
-const DateSelector: React.FC<DateSelectorProps> = ({ 
-  dates, 
-  selectedDate, 
-  onSelectDate 
-}) => {
-  // Reference to scroll view for programmatic scrolling
+const DateSelector: React.FC<DateSelectorProps> = ({ dates, selectedDate, onSelectDate }) => {
   const scrollViewRef = React.useRef<ScrollView>(null);
-  
-  // Scroll to selected date when component mounts or selected date changes
+
   React.useEffect(() => {
     const selectedIndex = dates.indexOf(selectedDate);
     if (selectedIndex !== -1 && scrollViewRef.current) {
-      // Calculate scroll position to center the selected date
       scrollViewRef.current.scrollTo({
-        x: (selectedIndex * DATE_ITEM_WIDTH) - (width / 2) + (DATE_ITEM_WIDTH / 2),
-        animated: true
+        x: selectedIndex * DATE_ITEM_STRIDE,
+        animated: true,
       });
     }
   }, [selectedDate, dates]);
@@ -49,21 +45,18 @@ const DateSelector: React.FC<DateSelectorProps> = ({
         {dates.map((date) => (
           <TouchableOpacity
             key={date}
-            style={[
-              styles.dateItem,
-              date === selectedDate && styles.selectedDateItem
-            ]}
+            style={[styles.dateItem, date === selectedDate && styles.selectedDateItem]}
             onPress={() => onSelectDate(date)}
+            activeOpacity={0.85}
           >
             <Text
-              style={[
-                styles.dateText,
-                date === selectedDate && styles.selectedDateText
-              ]}
+              style={[styles.dateText, date === selectedDate && styles.selectedDateText]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
             >
               {formatDateForDisplay(date)}
             </Text>
-            {date === selectedDate && <View style={styles.indicator} />}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -73,39 +66,37 @@ const DateSelector: React.FC<DateSelectorProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#111111',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    marginTop: 4,
   },
   scrollContent: {
-    paddingVertical: 10,
+    paddingHorizontal: DATE_TRACK_PADDING,
+    paddingVertical: 4,
+    gap: DATE_ITEM_GAP,
   },
   dateItem: {
     width: DATE_ITEM_WIDTH,
-    paddingVertical: 8,
-    paddingHorizontal: 5,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: '#141418',
+    borderColor: '#1F1F24',
   },
   selectedDateItem: {
-    // Selected date styling
+    backgroundColor: '#F3F4F6',
+    borderColor: '#F3F4F6',
   },
   dateText: {
-    color: '#888888',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#8D95A3',
+    fontSize: 13,
+    fontWeight: '600',
   },
   selectedDateText: {
-    color: '#ffffff',
+    color: '#0A0A0C',
     fontWeight: '700',
-  },
-  indicator: {
-    position: 'absolute',
-    bottom: -2,
-    width: 24,
-    height: 3,
-    backgroundColor: '#4CAF50', // Green underline similar to Fotmob
-    borderRadius: 1.5,
   },
 });
 

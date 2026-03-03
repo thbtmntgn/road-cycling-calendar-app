@@ -61,9 +61,11 @@ export interface Stage {
 export interface Rider {
   name: string;
   pcsSlug?: string;
+  nationality?: string; // ISO 3166-1 alpha-2, e.g. "FR"
 }
 
 export interface StartlistTeam {
   teamName: string;
+  countryCode?: string; // ISO 3166-1 alpha-2 team licence country
   riders: Rider[];
 }

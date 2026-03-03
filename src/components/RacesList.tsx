@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import RaceItem from './RaceItem';
+import { getRacePresentation } from '../constants/racePresentation';
 import { Race, RaceCategory, Stage } from '../types';
 
 interface RacesListProps {
@@ -13,71 +14,61 @@ interface RacesListProps {
 }
 
 interface Section {
-  title: string;
+  category: RaceCategory;
   data: Race[];
-  isOpen: boolean;
 }
 
-const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace, stagesMap, stageCountsMap }) => {
-  const groupRacesByCategory = (): Section[] => {
-    const sections: { [key: string]: Race[] } = {};
+const groupRacesByCategory = (races: Race[]): Section[] => {
+  const grouped = new Map<RaceCategory, Race[]>();
 
-    races.forEach((race) => {
-      if (!sections[race.category]) {
-        sections[race.category] = [];
-      }
-      sections[race.category].push(race);
-    });
+  races.forEach((race) => {
+    const current = grouped.get(race.category) ?? [];
+    current.push(race);
+    grouped.set(race.category, current);
+  });
 
-    const categoryOrder = {
-      [RaceCategory.WorldTour]: 1,
-      [RaceCategory.WomenWorldTour]: 2,
-      [RaceCategory.WorldChampionship]: 3,
-      [RaceCategory.WomenWorldChampionship]: 4,
-      [RaceCategory.ProSeries]: 5,
-      [RaceCategory.WomenProSeries]: 6,
-      [RaceCategory.NationalChampionship]: 7,
-      [RaceCategory.WomenNationalChampionship]: 8,
-      [RaceCategory.Continental]: 9,
-    };
+  return Array.from(grouped.entries())
+    .map(([category, data]) => ({ category, data }))
+    .sort(
+      (a, b) =>
+        getRacePresentation(a.category).priority - getRacePresentation(b.category).priority
+    );
+};
 
-    return Object.keys(sections)
-      .map((category) => ({
-        title: category,
-        data: sections[category],
-        isOpen: true,
-      }))
-      .sort((a, b) => {
-        const aPriority = categoryOrder[a.title as RaceCategory] || 99;
-        const bPriority = categoryOrder[b.title as RaceCategory] || 99;
-        return aPriority - bPriority;
-      });
-  };
-
-  const [sections, setSections] = React.useState<Section[]>(groupRacesByCategory());
+const RacesList: React.FC<RacesListProps> = ({
+  races,
+  showEmptyMessage = true,
+  onPressRace,
+  stagesMap,
+  stageCountsMap,
+}) => {
+  const sections = groupRacesByCategory(races);
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
-    setSections(groupRacesByCategory());
-  }, [races]); // eslint-disable-line react-hooks/exhaustive-deps
+    setOpenSections((current) => {
+      const nextState: Record<string, boolean> = {};
 
-  const toggleSection = (sectionTitle: string) => {
-    setSections((prevSections) =>
-      prevSections.map((section) =>
-        section.title === sectionTitle ? { ...section, isOpen: !section.isOpen } : section
-      )
-    );
+      groupRacesByCategory(races).forEach((section) => {
+        nextState[section.category] = current[section.category] ?? true;
+      });
+
+      const nextKeys = Object.keys(nextState);
+      const currentKeys = Object.keys(current);
+      const isUnchanged =
+        nextKeys.length === currentKeys.length &&
+        nextKeys.every((key) => current[key] === nextState[key]);
+
+      return isUnchanged ? current : nextState;
+    });
+  }, [races]);
+
+  const toggleSection = (category: RaceCategory) => {
+    setOpenSections((current) => ({
+      ...current,
+      [category]: !(current[category] ?? true),
+    }));
   };
-
-  const renderSectionHeader = (section: Section) => (
-    <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(section.title)}>
-      <View style={styles.sectionTitleContainer}>
-        <Text style={styles.sectionTitle}>{section.title}</Text>
-        <Text style={styles.sectionCount}>{section.data.length}</Text>
-      </View>
-
-      <Ionicons name={section.isOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#AAAAAA" />
-    </TouchableOpacity>
-  );
 
   if (races.length === 0 && showEmptyMessage) {
     return (
@@ -89,26 +80,86 @@ const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, o
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {sections.map((section) => (
-        <View key={section.title} style={styles.section}>
-          {renderSectionHeader(section)}
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {sections.map((section) => {
+        const presentation = getRacePresentation(section.category);
+        const isOpen = openSections[section.category] ?? true;
 
-          {section.isOpen && section.data.length > 0 && (
-            <View style={styles.raceItemsContainer}>
-              {section.data.map((race) => (
-                <RaceItem
-                  key={race.id}
-                  race={race}
-                  onPress={onPressRace ? () => onPressRace(race) : undefined}
-                  currentStage={stagesMap ? stagesMap[race.id] : undefined}
-                  totalStages={stageCountsMap?.[race.id]}
+        return (
+          <View key={section.category} style={styles.section}>
+            <TouchableOpacity
+              style={[
+                styles.sectionHeader,
+                {
+                  backgroundColor: presentation.headerBackground,
+                  borderColor: presentation.headerBorder,
+                },
+                isOpen && styles.sectionHeaderOpen,
+              ]}
+              onPress={() => toggleSection(section.category)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.sectionLead}>
+                <View
+                  style={[
+                    styles.sectionDot,
+                    { backgroundColor: presentation.accentColor },
+                  ]}
                 />
-              ))}
-            </View>
-          )}
-        </View>
-      ))}
+                <Text style={styles.sectionTitle}>{presentation.label}</Text>
+              </View>
+              <View style={styles.sectionMeta}>
+                <View
+                  style={[
+                    styles.sectionCountBadge,
+                    {
+                      backgroundColor: presentation.badgeBackground,
+                      borderColor: presentation.badgeBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sectionCount,
+                      { color: presentation.accentColor },
+                    ]}
+                  >
+                    {section.data.length}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={isOpen ? 'chevron-down' : 'chevron-forward'}
+                  size={18}
+                  color={presentation.accentColor}
+                />
+              </View>
+            </TouchableOpacity>
+            {isOpen && section.data.length > 0 && (
+              <View
+                style={[
+                  styles.sectionBody,
+                  {
+                    backgroundColor: presentation.bodyBackground,
+                    borderColor: presentation.bodyBorder,
+                  },
+                ]}
+              >
+                <View style={styles.raceItemsContainer}>
+                  {section.data.map((race) => (
+                    <RaceItem
+                      key={race.id}
+                      race={race}
+                      onPress={onPressRace ? () => onPressRace(race) : undefined}
+                      currentStage={stagesMap ? stagesMap[race.id] : undefined}
+                      totalStages={stageCountsMap?.[race.id]}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        );
+      })}
     </ScrollView>
   );
 };
@@ -116,48 +167,89 @@ const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, o
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'transparent',
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 28,
   },
   section: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#333333',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 18,
   },
-  sectionTitleContainer: {
+  sectionHeaderOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  sectionLead: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    marginRight: 10,
+  },
+  sectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   sectionTitle: {
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  sectionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionCountBadge: {
+    minWidth: 32,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
   },
   sectionCount: {
-    marginLeft: 8,
-    color: '#AAAAAA',
-    fontSize: 12,
-    fontWeight: '400',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  sectionBody: {
+    padding: 10,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    overflow: 'hidden',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingHorizontal: 24,
+    paddingVertical: 64,
   },
   emptyText: {
-    marginTop: 10,
-    color: '#777777',
-    fontSize: 16,
+    marginTop: 12,
+    color: '#71717A',
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   raceItemsContainer: {
-    paddingTop: 5,
-    paddingBottom: 5,
+    gap: 8,
   },
 });
 

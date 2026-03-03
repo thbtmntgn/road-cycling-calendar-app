@@ -241,9 +241,10 @@ def fetch_startlist(pcs_slug: str) -> Optional[list]:
 
     procyclingstats.RaceStartlist.startlist() returns a flat list of rider dicts:
       [{ rider_name, rider_url, nationality, rider_number, team_name, team_url }, ...]
-    We group by team_name to produce the nested structure.
+    We group by team_name to produce the nested structure and keep rider nationality.
+    Team licence country is fetched from the team page when team_url is available.
     """
-    from procyclingstats import RaceStartlist
+    from procyclingstats import RaceStartlist, Team
     from collections import OrderedDict
 
     try:
@@ -252,18 +253,42 @@ def fetch_startlist(pcs_slug: str) -> Optional[list]:
 
         # Group flat rider list by team_name, preserving first-seen order
         teams: dict = OrderedDict()
+        team_country_cache: dict[str, Optional[str]] = {}
         for rider in raw:
             team_name = rider.get("team_name", "")
+            team_url = rider.get("team_url", "")
             if team_name not in teams:
-                teams[team_name] = []
+                country_code = None
+                if team_url:
+                    if team_url not in team_country_cache:
+                        try:
+                            team = Team(team_url)
+                            raw_country = (team.license_country() or team.nationality() or "").strip().upper()
+                            team_country_cache[team_url] = raw_country if len(raw_country) == 2 else None
+                        except Exception:
+                            team_country_cache[team_url] = None
+                    country_code = team_country_cache[team_url]
+
+                team_entry = {"teamName": team_name, "riders": []}
+                if country_code:
+                    team_entry["countryCode"] = country_code
+                teams[team_name] = team_entry
+
             rider_name = rider.get("rider_name", "")
             if rider_name:
-                teams[team_name].append({"name": rider_name})
+                rider_entry = {"name": rider_name}
 
-        result = [
-            {"teamName": team_name, "riders": riders}
-            for team_name, riders in teams.items()
-        ]
+                rider_url = rider.get("rider_url", "")
+                if rider_url:
+                    rider_entry["pcsSlug"] = rider_url
+
+                nationality = (rider.get("nationality") or "").strip().upper()
+                if len(nationality) == 2:
+                    rider_entry["nationality"] = nationality
+
+                teams[team_name]["riders"].append(rider_entry)
+
+        result = list(teams.values())
         return result if result else None
     except Exception as exc:
         print(f"  ! No startlist for {pcs_slug}: {exc}")

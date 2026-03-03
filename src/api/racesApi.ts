@@ -56,7 +56,7 @@ export const fetchRaces = async (): Promise<ApiResponse> => {
 
 // Fetch startlist for a race by its id — throws on network/parse errors, caller handles empty (404)
 export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> => {
-  const cacheKey = `startlist_${raceId}`;
+  const cacheKey = `startlist_v2_${raceId}`;
   const cached = await readCache<StartlistTeam[]>(cacheKey);
   if (cached) return cached;
 

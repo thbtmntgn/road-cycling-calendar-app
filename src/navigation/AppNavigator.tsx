@@ -18,16 +18,16 @@ const stackScreenOptions = {
 
 function CalendarStackNavigator() {
   return (
-    <CalendarStack.Navigator screenOptions={stackScreenOptions}>
+      <CalendarStack.Navigator screenOptions={stackScreenOptions}>
       <CalendarStack.Screen
-        name="CalendarMain"
+        name="Calendar"
         component={CalendarScreen}
-        options={{ title: 'Race Calendar' }}
+        options={{ headerShown: false }}
       />
       <CalendarStack.Screen
         name="RaceDetail"
         component={RaceDetailScreen}
-        options={{ title: '' }}
+        options={{ title: '', headerBackTitle: 'Calendar' }}
       />
     </CalendarStack.Navigator>
   );

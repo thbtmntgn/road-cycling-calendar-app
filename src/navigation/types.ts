@@ -1,7 +1,6 @@
 import { Race } from '../types';
 
 export type CalendarStackParamList = {
-  CalendarMain: undefined;
+  Calendar: undefined;
   RaceDetail: { race: Race };
 };
-
