@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "lint": "eslint src/ --ext .ts,.tsx",
     "format": "prettier --write src/ scripts/",
-    "fetch-races": "python3 scripts/fetch_races.py"
+    "fetch-races": "python3 scripts/fetch_races.py --date-from 2026-01-01 --date-to 2026-03-31",
+    "fetch-races-full": "python3 scripts/fetch_races.py"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

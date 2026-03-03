@@ -9,6 +9,7 @@ interface RacesListProps {
   showEmptyMessage?: boolean;
   onPressRace?: (race: Race) => void;
   stagesMap?: Record<string, Stage | null>;
+  stageCountsMap?: Record<string, number>;
 }
 
 interface Section {
@@ -17,7 +18,7 @@ interface Section {
   isOpen: boolean;
 }
 
-const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace, stagesMap }) => {
+const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace, stagesMap, stageCountsMap }) => {
   const groupRacesByCategory = (): Section[] => {
     const sections: { [key: string]: Race[] } = {};
 
@@ -31,9 +32,13 @@ const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, o
     const categoryOrder = {
       [RaceCategory.WorldTour]: 1,
       [RaceCategory.WomenWorldTour]: 2,
-      [RaceCategory.ProSeries]: 3,
-      [RaceCategory.WomenProSeries]: 4,
-      [RaceCategory.Continental]: 5,
+      [RaceCategory.WorldChampionship]: 3,
+      [RaceCategory.WomenWorldChampionship]: 4,
+      [RaceCategory.ProSeries]: 5,
+      [RaceCategory.WomenProSeries]: 6,
+      [RaceCategory.NationalChampionship]: 7,
+      [RaceCategory.WomenNationalChampionship]: 8,
+      [RaceCategory.Continental]: 9,
     };
 
     return Object.keys(sections)
@@ -97,6 +102,7 @@ const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, o
                   race={race}
                   onPress={onPressRace ? () => onPressRace(race) : undefined}
                   currentStage={stagesMap ? stagesMap[race.id] : undefined}
+                  totalStages={stageCountsMap?.[race.id]}
                 />
               ))}
             </View>

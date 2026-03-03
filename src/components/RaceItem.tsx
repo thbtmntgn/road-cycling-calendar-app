@@ -1,14 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Race, Stage } from '../types';
 import { formatDateRange } from '../utils/dateUtils';
-import { useFavoritesStore } from '../store/favoritesStore';
 
 interface RaceItemProps {
   race: Race;
   onPress?: () => void;
   currentStage?: Stage | null;
+  totalStages?: number;
 }
 
 const countryToFlag = (code: string): string => {
@@ -19,33 +18,55 @@ const countryToFlag = (code: string): string => {
     .join('');
 };
 
-const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage }) => {
-  const { toggleFavorite, isFavorite } = useFavoritesStore();
-
-  const favorited = isFavorite(race.id);
-
-  const handleFavoritePress = () => {
-    toggleFavorite(race.id);
-  };
-
+const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalStages }) => {
   const getCategoryColor = (category: string): string => {
     switch (category) {
       case 'WorldTour':
-        return '#F44336'; // Red
-      case 'ProSeries':
-        return '#2196F3'; // Blue
-      case 'Continental':
-        return '#FF9800'; // Orange
+        return '#F44336';
       case 'WomenWorldTour':
-        return '#E91E63'; // Pink
+        return '#E91E63';
+      case 'WorldChampionship':
+        return '#FF6D00';
+      case 'WomenWorldChampionship':
+        return '#AD1457';
+      case 'ProSeries':
+        return '#2196F3';
       case 'WomenProSeries':
-        return '#9C27B0'; // Purple
+        return '#9C27B0';
+      case 'NationalChampionship':
+        return '#37474F';
+      case 'WomenNationalChampionship':
+        return '#546E7A';
+      case 'Continental':
+        return '#FF9800';
       default:
-        return '#4CAF50'; // Green
+        return '#4CAF50';
     }
   };
 
   const categoryColor = getCategoryColor(race.category);
+  const isOneDay = race.startDate === race.endDate;
+
+  let badge = '';
+  let stageDetails = '';
+  if (isOneDay) {
+    badge = 'One Day';
+  } else if (currentStage != null) {
+    const num = currentStage.stageNumber === 0 ? 'P' : String(currentStage.stageNumber);
+    badge = totalStages ? `Stage ${num}/${totalStages}` : `Stage ${num}`;
+
+    const parts: string[] = [];
+    if (currentStage.departure || currentStage.arrival) {
+      parts.push(`${currentStage.departure} → ${currentStage.arrival}`);
+    }
+    if (currentStage.distance > 0) parts.push(`${currentStage.distance} km`);
+    if (currentStage.startTime && currentStage.startTime !== '-') parts.push(currentStage.startTime);
+    stageDetails = parts.join(' · ');
+  }
+
+  const detailParts: string[] = [];
+  if (isOneDay && race.distance && race.distance > 0) detailParts.push(`${race.distance} km`);
+  detailParts.push(formatDateRange(race.startDate, race.endDate));
 
   return (
     <TouchableOpacity
@@ -57,41 +78,21 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage }) => {
         <View style={styles.raceHeader}>
           <Text style={styles.flag}>{countryToFlag(race.country)}</Text>
           <Text style={styles.raceName}>{race.name}</Text>
-          <TouchableOpacity onPress={handleFavoritePress} style={styles.favoriteButton}>
-            <Ionicons
-              name={favorited ? 'star' : 'star-outline'}
-              size={22}
-              color={favorited ? '#FFD700' : '#888888'}
-            />
-          </TouchableOpacity>
+          {badge !== '' && (
+            <View style={styles.stageBadge}>
+              <Text style={styles.stageBadgeText}>{badge}</Text>
+            </View>
+          )}
         </View>
 
         {currentStage === null && (
           <Text style={styles.stageRow}>Rest day</Text>
         )}
-        {currentStage != null && (
-          <Text style={styles.stageRow}>
-            {(() => {
-              const label = `Stage ${currentStage.stageNumber === 0 ? 'P' : currentStage.stageNumber}`;
-              const hasRoute = currentStage.departure || currentStage.arrival;
-              const hasDist = currentStage.distance > 0;
-              const hasTime = !!currentStage.startTime;
-              const route = hasRoute ? `${currentStage.departure} → ${currentStage.arrival}` : '';
-              const dist = hasDist ? `${currentStage.distance} km` : '';
-              const time = hasTime ? currentStage.startTime : '';
-              const parts = [route, dist, time].filter(Boolean);
-              return parts.length > 0 ? `${label} · ${parts.join(' · ')}` : label;
-            })()}
-          </Text>
+        {currentStage != null && stageDetails !== '' && (
+          <Text style={styles.stageRow}>{stageDetails}</Text>
         )}
 
-        <View style={styles.raceDetails}>
-          <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
-            <Text style={styles.categoryText}>{race.category}</Text>
-          </View>
-
-          <Text style={styles.dateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
-        </View>
+        <Text style={styles.detailRow}>{detailParts.join(' · ')}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -124,33 +125,27 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     flex: 1,
   },
-  favoriteButton: {
-    padding: 4,
-  },
-  raceDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  categoryBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+  stageBadge: {
+    backgroundColor: '#00838F',
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 4,
-    marginRight: 8,
+    marginLeft: 6,
   },
-  categoryText: {
+  stageBadgeText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
-  dateText: {
+  detailRow: {
     color: '#BBBBBB',
     fontSize: 12,
+    marginTop: 6,
   },
   stageRow: {
     color: '#888888',
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 6,
   },
 });
 

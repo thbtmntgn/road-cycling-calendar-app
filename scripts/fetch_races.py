@@ -17,8 +17,12 @@ import warnings
 from typing import Optional
 from pathlib import Path
 
-# Suppress urllib3 SSL warning on older macOS
-warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
+# Suppress urllib3 NotOpenSSLWarning on older macOS (LibreSSL)
+try:
+    from urllib3.exceptions import NotOpenSSLWarning
+    warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
+except ImportError:
+    pass
 
 import cloudscraper
 from bs4 import BeautifulSoup
@@ -34,10 +38,12 @@ UCI_TOUR_TO_CATEGORY = {
     "2.UWT": "WorldTour",
     "1.WWT": "WomenWorldTour",
     "2.WWT": "WomenWorldTour",
+    "WC":    "WorldChampionship",
     "1.Pro": "ProSeries",    # Men's ProSeries one-day
     "2.Pro": "ProSeries",    # Men's ProSeries stage
     "1.PRO": "ProSeries",    # alternate capitalisation seen on PCS
     "2.PRO": "ProSeries",
+    "NC":    "NationalChampionship",
     "1.1":   "Continental",  # UCI Continental one-day
     "2.1":   "Continental",  # UCI Continental stage race
 }
@@ -57,10 +63,32 @@ def create_scraper():
     )
 
 
-def fetch_race_slugs(year: int) -> list[dict]:
+# For NC and WC, exclude non-senior and non-road-race events based on slug keywords
+NC_WC_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-mj", "-wj", "-jr", "junior", "-crit"]
+
+
+def parse_pcs_date(raw: str, year: int) -> str:
+    """
+    Parse a PCS date cell (e.g. "14.06", "14.06 - 20.06") into "YYYY-MM-DD".
+    Returns "" on failure.
+    """
+    try:
+        start = raw.strip().split(" ")[0]  # take first part before any space
+        day, month = start.split(".")[:2]
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+    except Exception:
+        return ""
+
+
+def fetch_race_slugs(
+    year: int,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> list[dict]:
     """
     Scrape races.php for the given year (all circuits) and return a list of
     dicts with {slug, uci_tour} for each race we care about.
+    Date filtering is applied here to avoid fetching details for out-of-range races.
     """
     scraper = create_scraper()
     url = f"https://www.procyclingstats.com/races.php?year={year}&circuit="
@@ -82,7 +110,7 @@ def fetch_race_slugs(year: int) -> list[dict]:
 
         uci_tour = cols[4].get_text(strip=True)
         if uci_tour not in UCI_TOUR_TO_CATEGORY:
-            continue  # skip Continental, NC, WC, etc.
+            continue
 
         link = row.find("a", href=True)
         if not link:
@@ -94,6 +122,23 @@ def fetch_race_slugs(year: int) -> list[dict]:
         if parts and parts[-1] in ("gc", "result", "startlist", "overview"):
             parts = parts[:-1]
         slug = "/".join(parts)  # e.g. "race/tour-de-france/2026"
+
+        # For NC and WC, skip non-senior and non-road-race events
+        if uci_tour in {"NC", "WC"}:
+            slug_lower = slug.lower()
+            if any(kw in slug_lower for kw in NC_WC_EXCLUDE_KEYWORDS):
+                continue
+
+        # Pre-filter by date range using the date from the table (avoids
+        # fetching details for out-of-range races)
+        if date_from or date_to:
+            raw_date = cols[0].get_text(strip=True)
+            start_date = parse_pcs_date(raw_date, year)
+            if start_date:
+                if date_from and start_date < date_from:
+                    continue
+                if date_to and start_date > date_to:
+                    continue
 
         results.append({"slug": slug, "uci_tour": uci_tour})
 
@@ -126,13 +171,17 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
         gender = "Women"
     elif "woman" in pcs_category.lower():
         gender = "Women"
-        # Promote Women's ProSeries to WomenProSeries category
+        # Promote to the corresponding women's category
         if app_category == "ProSeries":
             app_category = "WomenProSeries"
+        elif app_category == "WorldChampionship":
+            app_category = "WomenWorldChampionship"
+        elif app_category == "NationalChampionship":
+            app_category = "WomenNationalChampionship"
     else:
         gender = "Men"
 
-    return {
+    result: dict = {
         "id": slug.replace("/", "-"),   # stable, unique string id
         "pcsSlug": slug,
         "name": name,
@@ -142,6 +191,21 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
         "category": app_category,
         "gender": gender,
     }
+
+    # For one-day races, fetch distance from the /result sub-page
+    # (Race.stages() returns empty for one-day races; the stage info block
+    # is only present on the result page, not the race overview page)
+    if start_date == end_date:
+        try:
+            from procyclingstats import Stage as PCSStage
+            detail = PCSStage(f"{slug}/result")
+            distance = detail.distance() or 0
+            if distance:
+                result["distance"] = distance
+        except Exception:
+            pass  # distance stays absent if page not available yet
+
+    return result
 
 
 def fetch_startlist(pcs_slug: str) -> Optional[list]:
@@ -262,6 +326,14 @@ def main():
         "--delay", type=float, default=1.0, help="Delay between requests in seconds (default: 1)"
     )
     parser.add_argument(
+        "--date-from", type=str, default=None,
+        help="Only include races starting on or after this date (YYYY-MM-DD)"
+    )
+    parser.add_argument(
+        "--date-to", type=str, default=None,
+        help="Only include races starting on or before this date (YYYY-MM-DD)"
+    )
+    parser.add_argument(
         "--startlists-only", action="store_true",
         help="Skip race metadata fetch; regenerate startlists from existing races.json"
     )
@@ -276,7 +348,7 @@ def main():
             races = json.load(f)
         print(f"Loaded {len(races)} races from {OUTPUT_PATH}")
     else:
-        slugs = fetch_race_slugs(args.year)
+        slugs = fetch_race_slugs(args.year, date_from=args.date_from, date_to=args.date_to)
         races = []
 
         for i, item in enumerate(slugs, 1):
@@ -285,8 +357,17 @@ def main():
             print(f"[{i}/{len(slugs)}] {slug} ({uci_tour})")
 
             details = fetch_race_details(slug, uci_tour)
-            if details:
-                races.append(details)
+            if not details:
+                continue
+
+            # Safety net in case the table date differed from the actual race date
+            start_date = details.get("startDate", "")
+            if args.date_from and start_date < args.date_from:
+                continue
+            if args.date_to and start_date > args.date_to:
+                continue
+
+            races.append(details)
 
             if i < len(slugs):
                 time.sleep(args.delay)

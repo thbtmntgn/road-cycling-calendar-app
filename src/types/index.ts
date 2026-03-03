@@ -1,10 +1,14 @@
 // Race categories
 export enum RaceCategory {
   WorldTour = 'WorldTour',
-  ProSeries = 'ProSeries',
-  Continental = 'Continental',
   WomenWorldTour = 'WomenWorldTour',
+  WorldChampionship = 'WorldChampionship',
+  WomenWorldChampionship = 'WomenWorldChampionship',
+  ProSeries = 'ProSeries',
   WomenProSeries = 'WomenProSeries',
+  NationalChampionship = 'NationalChampionship',
+  WomenNationalChampionship = 'WomenNationalChampionship',
+  Continental = 'Continental',
 }
 
 // Gender types
@@ -23,7 +27,7 @@ export interface Race {
   category: RaceCategory;
   gender: Gender;
   country: string;
-  isFavorite?: boolean;
+  distance?: number; // km, only set for one-day races
 }
 
 // Grouped races by date
