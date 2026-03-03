@@ -5,7 +5,3 @@ export type CalendarStackParamList = {
   RaceDetail: { race: Race };
 };
 
-export type FavoritesStackParamList = {
-  FavoritesMain: undefined;
-  RaceDetail: { race: Race };
-};

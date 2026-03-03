@@ -15,7 +15,6 @@ import RacesList from '../components/RacesList';
 import { getDateRange, getTodayDate } from '../utils/dateUtils';
 import { fetchRaces, getRacesForDate, filterRacesByGender, fetchStages } from '../api/racesApi';
 import { Race, Gender, Stage } from '../types';
-import { useFavoritesStore } from '../store/favoritesStore';
 import { CalendarStackParamList } from '../navigation/types';
 
 interface Props {
@@ -28,15 +27,9 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [races, setRaces] = useState<Race[]>([]);
   const [filteredRaces, setFilteredRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedGender, setSelectedGender] = useState<Gender | null>(null);
+  const [selectedGender, setSelectedGender] = useState<Gender>(Gender.Men);
   const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
-
-  const { favoriteRaces, loadFavorites } = useFavoritesStore();
-
-  // Load favorites from storage
-  useEffect(() => {
-    loadFavorites();
-  }, [loadFavorites]);
+  const [stageCountsMap, setStageCountsMap] = useState<Record<string, number>>({});
 
   // Load races — fetchRaces handles offline via AsyncStorage cache + bundled fallback
   useEffect(() => {
@@ -58,23 +51,16 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     loadRaces();
   }, []);
 
-  // Filter races when date, gender filter, or favorites change
+  // Filter races when date or gender filter changes
   useEffect(() => {
     if (races.length > 0) {
       let racesForDate = getRacesForDate(races, selectedDate);
 
-      if (selectedGender !== null) {
-        racesForDate = filterRacesByGender(racesForDate, selectedGender);
-      }
-
-      racesForDate = racesForDate.map((race) => ({
-        ...race,
-        isFavorite: favoriteRaces.includes(race.id),
-      }));
+      racesForDate = filterRacesByGender(racesForDate, selectedGender);
 
       setFilteredRaces(racesForDate);
     }
-  }, [races, selectedDate, selectedGender, favoriteRaces]);
+  }, [races, selectedDate, selectedGender]);
 
   // Fetch stages for all multi-day races visible on the selected date
   useEffect(() => {
@@ -90,17 +76,22 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
           try {
             const stages = await fetchStages(race.id);
             const stage = stages.find((s) => s.date === selectedDate) ?? null;
-            return [race.id, stage] as [string, Stage | null];
+            return { id: race.id, stage, total: stages.length };
           } catch {
             return null;
           }
         })
       );
       const map: Record<string, Stage | null> = {};
+      const countsMap: Record<string, number> = {};
       for (const entry of entries) {
-        if (entry) map[entry[0]] = entry[1];
+        if (entry) {
+          map[entry.id] = entry.stage;
+          countsMap[entry.id] = entry.total;
+        }
       }
       setStagesMap(map);
+      setStageCountsMap(countsMap);
     };
 
     loadStages();
@@ -108,10 +99,6 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
-  };
-
-  const toggleGenderFilter = (gender: Gender | null) => {
-    setSelectedGender((prevGender) => (prevGender === gender ? null : gender));
   };
 
   const handleRacePress = (race: Race) => {
@@ -125,45 +112,24 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.container}>
         <DateSelector dates={dates} selectedDate={selectedDate} onSelectDate={handleDateSelect} />
 
-        {/* Gender filter buttons */}
+        {/* Gender toggle */}
         <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[styles.filterButton, selectedGender === Gender.Men && styles.activeFilterButton]}
-            onPress={() => toggleGenderFilter(Gender.Men)}
-          >
-            <Ionicons
-              name="man"
-              size={18}
-              color={selectedGender === Gender.Men ? '#FFFFFF' : '#AAAAAA'}
-            />
-            <Text
-              style={[styles.filterText, selectedGender === Gender.Men && styles.activeFilterText]}
+          <View style={styles.toggle}>
+            <TouchableOpacity
+              style={[styles.toggleSegment, selectedGender === Gender.Men && styles.toggleSegmentActive]}
+              onPress={() => setSelectedGender(Gender.Men)}
             >
-              Men
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              selectedGender === Gender.Women && styles.activeFilterButton,
-            ]}
-            onPress={() => toggleGenderFilter(Gender.Women)}
-          >
-            <Ionicons
-              name="woman"
-              size={18}
-              color={selectedGender === Gender.Women ? '#FFFFFF' : '#AAAAAA'}
-            />
-            <Text
-              style={[
-                styles.filterText,
-                selectedGender === Gender.Women && styles.activeFilterText,
-              ]}
+              <Ionicons name="man" size={16} color={selectedGender === Gender.Men ? '#FFFFFF' : '#AAAAAA'} />
+              <Text style={[styles.toggleText, selectedGender === Gender.Men && styles.toggleTextActive]}>Men</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleSegment, selectedGender === Gender.Women && styles.toggleSegmentActive]}
+              onPress={() => setSelectedGender(Gender.Women)}
             >
-              Women
-            </Text>
-          </TouchableOpacity>
+              <Ionicons name="woman" size={16} color={selectedGender === Gender.Women ? '#FFFFFF' : '#AAAAAA'} />
+              <Text style={[styles.toggleText, selectedGender === Gender.Women && styles.toggleTextActive]}>Women</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {loading ? (
@@ -171,7 +137,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             <ActivityIndicator size="large" color="#4CAF50" />
           </View>
         ) : (
-          <RacesList races={filteredRaces} onPressRace={handleRacePress} stagesMap={stagesMap} />
+          <RacesList races={filteredRaces} onPressRace={handleRacePress} stagesMap={stagesMap} stageCountsMap={stageCountsMap} />
         )}
       </View>
     </SafeAreaView>
@@ -193,30 +159,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterContainer: {
-    flexDirection: 'row',
     padding: 10,
     backgroundColor: '#222222',
     borderBottomWidth: 1,
     borderBottomColor: '#333333',
+    alignItems: 'center',
   },
-  filterButton: {
+  toggle: {
+    flexDirection: 'row',
+    backgroundColor: '#333333',
+    borderRadius: 20,
+    padding: 3,
+  },
+  toggleSegment: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 10,
-    borderRadius: 20,
-    backgroundColor: '#333333',
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    gap: 5,
   },
-  activeFilterButton: {
+  toggleSegmentActive: {
     backgroundColor: '#4CAF50',
   },
-  filterText: {
+  toggleText: {
     color: '#AAAAAA',
-    marginLeft: 5,
     fontSize: 14,
   },
-  activeFilterText: {
+  toggleTextActive: {
     color: '#FFFFFF',
     fontWeight: '500',
   },
