@@ -1,16 +1,25 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Race } from '../types';
+import { Race, Stage } from '../types';
 import { formatDateRange } from '../utils/dateUtils';
 import { useFavoritesStore } from '../store/favoritesStore';
 
 interface RaceItemProps {
   race: Race;
   onPress?: () => void;
+  currentStage?: Stage | null;
 }
 
-const RaceItem: React.FC<RaceItemProps> = ({ race, onPress }) => {
+const countryToFlag = (code: string): string => {
+  return code
+    .toUpperCase()
+    .split('')
+    .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+    .join('');
+};
+
+const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage }) => {
   const { toggleFavorite, isFavorite } = useFavoritesStore();
 
   const favorited = isFavorite(race.id);
@@ -46,6 +55,7 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress }) => {
     >
       <View style={styles.raceInfo}>
         <View style={styles.raceHeader}>
+          <Text style={styles.flag}>{countryToFlag(race.country)}</Text>
           <Text style={styles.raceName}>{race.name}</Text>
           <TouchableOpacity onPress={handleFavoritePress} style={styles.favoriteButton}>
             <Ionicons
@@ -63,6 +73,26 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress }) => {
 
           <Text style={styles.dateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
         </View>
+
+        {currentStage === null && (
+          <Text style={styles.stageRow}>Rest day</Text>
+        )}
+        {currentStage != null && (
+          <Text style={styles.stageRow}>
+            {(() => {
+              const label = `Stage ${currentStage.stageNumber === 0 ? 'P' : currentStage.stageNumber}`;
+              const hasRoute = currentStage.departure || currentStage.arrival;
+              const hasDist = currentStage.distance > 0;
+              if (hasRoute && hasDist)
+                return `${label} · ${currentStage.departure} → ${currentStage.arrival} · ${currentStage.distance} km`;
+              if (hasRoute)
+                return `${label} · ${currentStage.departure} → ${currentStage.arrival}`;
+              if (hasDist)
+                return `${label} · ${currentStage.distance} km`;
+              return label;
+            })()}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -84,6 +114,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  flag: {
+    fontSize: 20,
+    marginRight: 8,
   },
   raceName: {
     fontSize: 16,
@@ -113,6 +147,11 @@ const styles = StyleSheet.create({
   dateText: {
     color: '#BBBBBB',
     fontSize: 12,
+  },
+  stageRow: {
+    color: '#888888',
+    fontSize: 12,
+    marginTop: 4,
   },
 });
 

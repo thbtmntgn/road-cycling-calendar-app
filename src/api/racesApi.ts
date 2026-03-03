@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { ApiResponse, Race, Gender, StartlistTeam } from '../types';
+import { ApiResponse, Race, Gender, StartlistTeam, Stage } from '../types';
 import racesData from '../data/races.json';
 
 const RACES_URL =
   'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/races.json';
 const STARTLIST_BASE_URL =
   'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/startlists';
+const STAGES_BASE_URL =
+  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/stages';
 
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -60,6 +62,18 @@ export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> =
 
   const url = `${STARTLIST_BASE_URL}/${raceId}.json`;
   const response = await axios.get<StartlistTeam[]>(url, { timeout: 10000 });
+  await writeCache(cacheKey, response.data);
+  return response.data;
+};
+
+// Fetch stages for a race by its id — throws on network/parse errors, caller handles 404
+export const fetchStages = async (raceId: string): Promise<Stage[]> => {
+  const cacheKey = `stages_${raceId}`;
+  const cached = await readCache<Stage[]>(cacheKey);
+  if (cached) return cached;
+
+  const url = `${STAGES_BASE_URL}/${raceId}.json`;
+  const response = await axios.get<Stage[]>(url, { timeout: 10000 });
   await writeCache(cacheKey, response.data);
   return response.data;
 };

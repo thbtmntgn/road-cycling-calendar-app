@@ -2,12 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import RaceItem from './RaceItem';
-import { Race, RaceCategory } from '../types';
+import { Race, RaceCategory, Stage } from '../types';
 
 interface RacesListProps {
   races: Race[];
   showEmptyMessage?: boolean;
   onPressRace?: (race: Race) => void;
+  stagesMap?: Record<string, Stage | null>;
 }
 
 interface Section {
@@ -16,7 +17,7 @@ interface Section {
   isOpen: boolean;
 }
 
-const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace }) => {
+const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace, stagesMap }) => {
   const groupRacesByCategory = (): Section[] => {
     const sections: { [key: string]: Race[] } = {};
 
@@ -95,6 +96,7 @@ const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, o
                   key={race.id}
                   race={race}
                   onPress={onPressRace ? () => onPressRace(race) : undefined}
+                  currentStage={stagesMap ? stagesMap[race.id] : undefined}
                 />
               ))}
             </View>

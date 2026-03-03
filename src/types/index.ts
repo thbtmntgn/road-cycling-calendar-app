@@ -38,6 +38,15 @@ export interface ApiResponse {
   error?: string;
 }
 
+// Stage data for a single stage in a stage race
+export interface Stage {
+  stageNumber: number; // 0 = prologue
+  date: string;        // "YYYY-MM-DD"
+  departure: string;
+  arrival: string;
+  distance: number;    // km
+}
+
 // Startlist types
 export interface Rider {
   name: string;

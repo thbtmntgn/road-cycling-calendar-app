@@ -48,6 +48,7 @@ WWT_CATEGORIES = {"1.WWT", "2.WWT"}
 
 OUTPUT_PATH = Path(__file__).parent.parent / "src" / "data" / "races.json"
 STARTLISTS_PATH = Path(__file__).parent.parent / "src" / "data" / "startlists"
+STAGES_PATH = Path(__file__).parent.parent / "src" / "data" / "stages"
 
 
 def create_scraper():
@@ -179,6 +180,63 @@ def fetch_startlist(pcs_slug: str) -> Optional[list]:
         return None
 
 
+def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list]:
+    """
+    Fetch stage list for a multi-day race using procyclingstats.
+    Returns None for one-day races (start_date == end_date) or on error.
+
+    procyclingstats.Race.stages() returns a list of dicts including:
+      stage_url, date, departure, arrival, distance, ...
+    stage_url last segment: "stage-1" → stageNumber 1, "prologue" → 0.
+    """
+    if start_date == end_date:
+        return None  # one-day race, no stages
+
+    try:
+        race = Race(pcs_slug)
+        raw_stages = race.stages()
+    except Exception as exc:
+        print(f"  ! No stages for {pcs_slug}: {exc}")
+        return None
+
+    if not raw_stages:
+        return None
+
+    # PCS returns dates as "MM-DD"; we need "YYYY-MM-DD".
+    # Extract year from start_date (format "YYYY-MM-DD").
+    year = start_date.split("-")[0] if start_date else ""
+
+    result = []
+    for s in raw_stages:
+        stage_url = s.get("stage_url", "")
+        last_segment = stage_url.rstrip("/").split("/")[-1]  # e.g. "stage-1" or "prologue"
+
+        if last_segment == "prologue":
+            stage_number = 0
+        else:
+            # "stage-3" → 3
+            parts = last_segment.split("-")
+            try:
+                stage_number = int(parts[-1])
+            except (ValueError, IndexError):
+                continue  # skip unparseable entries
+
+        raw_date = s.get("date", "")
+        # Normalize "MM-DD" → "YYYY-MM-DD"; leave "YYYY-MM-DD" untouched
+        if raw_date and len(raw_date) == 5 and year:
+            raw_date = f"{year}-{raw_date}"
+
+        result.append({
+            "stageNumber": stage_number,
+            "date": raw_date,
+            "departure": s.get("departure", ""),
+            "arrival": s.get("arrival", ""),
+            "distance": s.get("distance", 0),
+        })
+
+    return result if result else None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch UCI race data from ProCyclingStats")
     parser.add_argument("--year", type=int, default=2026, help="Season year (default: 2026)")
@@ -189,9 +247,13 @@ def main():
         "--startlists-only", action="store_true",
         help="Skip race metadata fetch; regenerate startlists from existing races.json"
     )
+    parser.add_argument(
+        "--stages-only", action="store_true",
+        help="Skip race metadata fetch; regenerate stages from existing races.json"
+    )
     args = parser.parse_args()
 
-    if args.startlists_only:
+    if args.startlists_only or args.stages_only:
         with open(OUTPUT_PATH, encoding="utf-8") as f:
             races = json.load(f)
         print(f"Loaded {len(races)} races from {OUTPUT_PATH}")
@@ -223,12 +285,15 @@ def main():
         for cat, count in sorted(by_cat.items()):
             print(f"  {cat}: {count}")
 
-    # Fetch startlists
-    print(f"\nFetching startlists for {len(races)} races …")
+    # Fetch startlists (skipped when --stages-only)
     STARTLISTS_PATH.mkdir(parents=True, exist_ok=True)
     startlists_written = 0
 
-    for race in races:
+    startlist_races = [] if args.stages_only else races
+    if startlist_races:
+        print(f"\nFetching startlists for {len(startlist_races)} races …")
+
+    for race in startlist_races:
         pcs_slug = race.get("pcsSlug")
         if not pcs_slug:
             continue
@@ -246,6 +311,39 @@ def main():
             startlists_written += 1
 
     print(f"\nWrote {startlists_written} startlists to {STARTLISTS_PATH}")
+
+    # Fetch stages (skipped when --startlists-only)
+    STAGES_PATH.mkdir(parents=True, exist_ok=True)
+    stages_written = 0
+
+    stage_races = [] if args.startlists_only else races
+    if stage_races:
+        print(f"\nFetching stages for {len(stage_races)} races …")
+
+    for race in stage_races:
+        pcs_slug = race.get("pcsSlug")
+        if not pcs_slug:
+            continue
+
+        race_id = race["id"]
+        start_date = race.get("startDate", "")
+        end_date = race.get("endDate", "")
+
+        if start_date == end_date:
+            continue  # one-day race, skip
+
+        print(f"  [{race_id}] {pcs_slug}")
+
+        time.sleep(args.delay)
+        stages = fetch_stages(pcs_slug, start_date, end_date)
+        if stages:
+            stages_path = STAGES_PATH / f"{race_id}.json"
+            with open(stages_path, "w", encoding="utf-8") as f:
+                json.dump(stages, f, indent=2, ensure_ascii=False)
+            print(f"    Wrote {len(stages)} stages to {stages_path.name}")
+            stages_written += 1
+
+    print(f"\nWrote {stages_written} stage files to {STAGES_PATH}")
 
 
 if __name__ == "__main__":

@@ -10,8 +10,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import RacesList from '../components/RacesList';
-import { fetchRaces } from '../api/racesApi';
-import { Race } from '../types';
+import { fetchRaces, fetchStages } from '../api/racesApi';
+import { Race, Stage } from '../types';
+import { getTodayDate } from '../utils/dateUtils';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { FavoritesStackParamList } from '../navigation/types';
 
@@ -24,6 +25,7 @@ const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
   const [favoriteRaces, setFavoriteRaces] = useState<Race[]>([]);
+  const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
   
   // Get favorites from store
   const { favoriteRaces: favoritesIds, loadFavorites } = useFavoritesStore();
@@ -66,6 +68,39 @@ const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
     })));
   }, [allRaces, favoritesIds]);
   
+  // Fetch stages for ongoing multi-day favorited races (using today's date)
+  useEffect(() => {
+    const today = getTodayDate();
+    const ongoingMultiDay = favoriteRaces.filter(
+      (r) => r.startDate !== r.endDate && today >= r.startDate && today <= r.endDate
+    );
+    if (ongoingMultiDay.length === 0) {
+      setStagesMap({});
+      return;
+    }
+
+    const loadStages = async () => {
+      const entries = await Promise.all(
+        ongoingMultiDay.map(async (race) => {
+          try {
+            const stages = await fetchStages(race.id);
+            const stage = stages.find((s) => s.date === today) ?? null;
+            return [race.id, stage] as [string, Stage | null];
+          } catch {
+            return null;
+          }
+        })
+      );
+      const map: Record<string, Stage | null> = {};
+      for (const entry of entries) {
+        if (entry) map[entry[0]] = entry[1];
+      }
+      setStagesMap(map);
+    };
+
+    loadStages();
+  }, [favoriteRaces]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Show empty favorites message
   const renderEmptyFavorites = () => (
     <View style={styles.emptyContainer}>
@@ -93,6 +128,7 @@ const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
             races={favoriteRaces}
             showEmptyMessage={false}
             onPressRace={(race) => navigation.navigate('RaceDetail', { race })}
+            stagesMap={stagesMap}
           />
         )}
       </View>

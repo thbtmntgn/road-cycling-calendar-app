@@ -13,8 +13,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateSelector from '../components/DateSelector';
 import RacesList from '../components/RacesList';
 import { getDateRange, getTodayDate } from '../utils/dateUtils';
-import { fetchRaces, getRacesForDate, filterRacesByGender } from '../api/racesApi';
-import { Race, Gender } from '../types';
+import { fetchRaces, getRacesForDate, filterRacesByGender, fetchStages } from '../api/racesApi';
+import { Race, Gender, Stage } from '../types';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { CalendarStackParamList } from '../navigation/types';
 
@@ -29,6 +29,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [filteredRaces, setFilteredRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedGender, setSelectedGender] = useState<Gender | null>(null);
+  const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
 
   const { favoriteRaces, loadFavorites } = useFavoritesStore();
 
@@ -74,6 +75,36 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       setFilteredRaces(racesForDate);
     }
   }, [races, selectedDate, selectedGender, favoriteRaces]);
+
+  // Fetch stages for all multi-day races visible on the selected date
+  useEffect(() => {
+    const multiDayRaces = filteredRaces.filter((r) => r.startDate !== r.endDate);
+    if (multiDayRaces.length === 0) {
+      setStagesMap({});
+      return;
+    }
+
+    const loadStages = async () => {
+      const entries = await Promise.all(
+        multiDayRaces.map(async (race) => {
+          try {
+            const stages = await fetchStages(race.id);
+            const stage = stages.find((s) => s.date === selectedDate) ?? null;
+            return [race.id, stage] as [string, Stage | null];
+          } catch {
+            return null;
+          }
+        })
+      );
+      const map: Record<string, Stage | null> = {};
+      for (const entry of entries) {
+        if (entry) map[entry[0]] = entry[1];
+      }
+      setStagesMap(map);
+    };
+
+    loadStages();
+  }, [filteredRaces, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
@@ -140,7 +171,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             <ActivityIndicator size="large" color="#4CAF50" />
           </View>
         ) : (
-          <RacesList races={filteredRaces} onPressRace={handleRacePress} />
+          <RacesList races={filteredRaces} onPressRace={handleRacePress} stagesMap={stagesMap} />
         )}
       </View>
     </SafeAreaView>
