@@ -66,14 +66,6 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.raceDetails}>
-          <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
-            <Text style={styles.categoryText}>{race.category}</Text>
-          </View>
-
-          <Text style={styles.dateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
-        </View>
-
         {currentStage === null && (
           <Text style={styles.stageRow}>Rest day</Text>
         )}
@@ -83,16 +75,23 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage }) => {
               const label = `Stage ${currentStage.stageNumber === 0 ? 'P' : currentStage.stageNumber}`;
               const hasRoute = currentStage.departure || currentStage.arrival;
               const hasDist = currentStage.distance > 0;
-              if (hasRoute && hasDist)
-                return `${label} · ${currentStage.departure} → ${currentStage.arrival} · ${currentStage.distance} km`;
-              if (hasRoute)
-                return `${label} · ${currentStage.departure} → ${currentStage.arrival}`;
-              if (hasDist)
-                return `${label} · ${currentStage.distance} km`;
-              return label;
+              const hasTime = !!currentStage.startTime;
+              const route = hasRoute ? `${currentStage.departure} → ${currentStage.arrival}` : '';
+              const dist = hasDist ? `${currentStage.distance} km` : '';
+              const time = hasTime ? currentStage.startTime : '';
+              const parts = [route, dist, time].filter(Boolean);
+              return parts.length > 0 ? `${label} · ${parts.join(' · ')}` : label;
             })()}
           </Text>
         )}
+
+        <View style={styles.raceDetails}>
+          <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
+            <Text style={styles.categoryText}>{race.category}</Text>
+          </View>
+
+          <Text style={styles.dateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );

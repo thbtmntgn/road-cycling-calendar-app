@@ -185,10 +185,12 @@ def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list
     Fetch stage list for a multi-day race using procyclingstats.
     Returns None for one-day races (start_date == end_date) or on error.
 
-    procyclingstats.Race.stages() returns a list of dicts including:
-      stage_url, date, departure, arrival, distance, ...
+    Uses Race.stages() to get all stage URLs + dates, then fetches each
+    Stage individually for departure, arrival, distance, and start_time.
     stage_url last segment: "stage-1" → stageNumber 1, "prologue" → 0.
     """
+    from procyclingstats import Stage as PCSStage
+
     if start_date == end_date:
         return None  # one-day race, no stages
 
@@ -226,12 +228,28 @@ def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list
         if raw_date and len(raw_date) == 5 and year:
             raw_date = f"{year}-{raw_date}"
 
+        # Fetch full stage details (departure, arrival, distance, start_time)
+        departure = ""
+        arrival = ""
+        distance = 0
+        start_time = ""
+        if stage_url:
+            try:
+                detail = PCSStage(stage_url)
+                departure = detail.departure() or ""
+                arrival = detail.arrival() or ""
+                distance = detail.distance() or 0
+                start_time = (detail.start_time() or "").strip()
+            except Exception:
+                pass  # leave fields empty if stage page not yet available
+
         result.append({
             "stageNumber": stage_number,
             "date": raw_date,
-            "departure": s.get("departure", ""),
-            "arrival": s.get("arrival", ""),
-            "distance": s.get("distance", 0),
+            "departure": departure,
+            "arrival": arrival,
+            "distance": distance,
+            "startTime": start_time,
         })
 
     return result if result else None

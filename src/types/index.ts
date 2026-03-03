@@ -45,6 +45,7 @@ export interface Stage {
   departure: string;
   arrival: string;
   distance: number;    // km
+  startTime?: string;  // "HH:MM"
 }
 
 // Startlist types
