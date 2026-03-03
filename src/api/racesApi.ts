@@ -40,14 +40,14 @@ async function writeCache<T>(key: string, data: T): Promise<void> {
 
 // Get all races — tries remote first, falls back to cached, then bundled JSON
 export const fetchRaces = async (): Promise<ApiResponse> => {
-  const cached = await readCache<Race[]>('races_cache');
+  const cached = await readCache<Race[]>('races_cache_v2');
   if (cached) {
     return { success: true, data: cached };
   }
 
   try {
     const response = await axios.get<Race[]>(RACES_URL, { timeout: 10000 });
-    await writeCache('races_cache', response.data);
+    await writeCache('races_cache_v2', response.data);
     return { success: true, data: response.data };
   } catch {
     return { success: true, data: racesData as Race[] };
