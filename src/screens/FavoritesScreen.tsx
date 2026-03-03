@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  SafeAreaView,
+import {
+  View,
+  StyleSheet,
   StatusBar,
   ActivityIndicator,
   Text
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import RacesList from '../components/RacesList';
 import { fetchRaces } from '../api/racesApi';
 import { Race } from '../types';
 import { useFavoritesStore } from '../store/favoritesStore';
+import { FavoritesStackParamList } from '../navigation/types';
 
-const FavoritesScreen: React.FC = () => {
+interface Props {
+  navigation: NativeStackNavigationProp<FavoritesStackParamList, 'FavoritesMain'>;
+}
+
+const FavoritesScreen: React.FC<Props> = ({ navigation }) => {
   // State variables
   const [loading, setLoading] = useState<boolean>(true);
   const [allRaces, setAllRaces] = useState<Race[]>([]);
@@ -83,9 +89,10 @@ const FavoritesScreen: React.FC = () => {
         ) : favoriteRaces.length === 0 ? (
           renderEmptyFavorites()
         ) : (
-          <RacesList 
-            races={favoriteRaces} 
-            showEmptyMessage={false} 
+          <RacesList
+            races={favoriteRaces}
+            showEmptyMessage={false}
+            onPressRace={(race) => navigation.navigate('RaceDetail', { race })}
           />
         )}
       </View>

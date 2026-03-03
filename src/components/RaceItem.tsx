@@ -7,21 +7,18 @@ import { useFavoritesStore } from '../store/favoritesStore';
 
 interface RaceItemProps {
   race: Race;
+  onPress?: () => void;
 }
 
-const RaceItem: React.FC<RaceItemProps> = ({ race }) => {
-  // Access favorites store
+const RaceItem: React.FC<RaceItemProps> = ({ race, onPress }) => {
   const { toggleFavorite, isFavorite } = useFavoritesStore();
-  
-  // Check if race is favorited
+
   const favorited = isFavorite(race.id);
-  
-  // Handle favorite button press
+
   const handleFavoritePress = () => {
     toggleFavorite(race.id);
   };
-  
-  // Get appropriate color for race category
+
   const getCategoryColor = (category: string): string => {
     switch (category) {
       case 'WorldTour':
@@ -38,38 +35,36 @@ const RaceItem: React.FC<RaceItemProps> = ({ race }) => {
         return '#4CAF50'; // Green
     }
   };
-  
+
+  const categoryColor = getCategoryColor(race.category);
+
   return (
-    <View style={styles.container}>
+    <TouchableOpacity
+      style={[styles.container, { borderLeftColor: categoryColor }]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
       <View style={styles.raceInfo}>
         <View style={styles.raceHeader}>
           <Text style={styles.raceName}>{race.name}</Text>
-          <TouchableOpacity 
-            onPress={handleFavoritePress} 
-            style={styles.favoriteButton}
-          >
-            <Ionicons 
-              name={favorited ? 'star' : 'star-outline'} 
-              size={22} 
-              color={favorited ? '#FFD700' : '#888888'} 
+          <TouchableOpacity onPress={handleFavoritePress} style={styles.favoriteButton}>
+            <Ionicons
+              name={favorited ? 'star' : 'star-outline'}
+              size={22}
+              color={favorited ? '#FFD700' : '#888888'}
             />
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.raceDetails}>
-          <View style={[
-            styles.categoryBadge, 
-            { backgroundColor: getCategoryColor(race.category) }
-          ]}>
+          <View style={[styles.categoryBadge, { backgroundColor: categoryColor }]}>
             <Text style={styles.categoryText}>{race.category}</Text>
           </View>
-          
-          <Text style={styles.dateText}>
-            {formatDateRange(race.startDate, race.endDate)}
-          </Text>
+
+          <Text style={styles.dateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -81,7 +76,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     padding: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50', // Can be dynamic based on race type
   },
   raceInfo: {
     flex: 1,

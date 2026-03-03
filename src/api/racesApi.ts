@@ -1,170 +1,86 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { ApiResponse, Race, Gender, RaceCategory } from '../types';
+import { ApiResponse, Race, Gender, StartlistTeam } from '../types';
+import racesData from '../data/races.json';
 
-// For the proof of concept, we'll use mock data
-// Later this can be replaced with actual API calls
+const RACES_URL =
+  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/races.json';
+const STARTLIST_BASE_URL =
+  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/startlists';
 
-// Mock cycling race data
-const mockRaces: Race[] = [
-  {
-    id: '1',
-    name: 'Tour de France',
-    startDate: '2025-06-27',
-    endDate: '2025-07-19',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'FR',
-  },
-  {
-    id: '2',
-    name: 'Giro d\'Italia',
-    startDate: '2025-05-10',
-    endDate: '2025-06-01',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'IT',
-  },
-  {
-    id: '3',
-    name: 'La Vuelta a España',
-    startDate: '2025-08-16',
-    endDate: '2025-09-07',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'ES',
-  },
-  {
-    id: '4',
-    name: 'Paris-Roubaix',
-    startDate: '2025-04-13',
-    endDate: '2025-04-13',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'FR',
-  },
-  {
-    id: '5',
-    name: 'Tour of Flanders',
-    startDate: '2025-04-06',
-    endDate: '2025-04-06',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'BE',
-  },
-  {
-    id: '6',
-    name: 'Giro d\'Italia Women',
-    startDate: '2025-07-05',
-    endDate: '2025-07-14',
-    category: RaceCategory.WomenWorldTour,
-    gender: Gender.Women,
-    country: 'IT',
-  },
-  {
-    id: '7',
-    name: 'La Course by Le Tour de France',
-    startDate: '2025-07-19',
-    endDate: '2025-07-19',
-    category: RaceCategory.WomenWorldTour,
-    gender: Gender.Women,
-    country: 'FR',
-  },
-  {
-    id: '8',
-    name: 'Tour of California',
-    startDate: '2025-05-14',
-    endDate: '2025-05-20',
-    category: RaceCategory.ProSeries,
-    gender: Gender.Men,
-    country: 'US',
-  },
-  {
-    id: '9',
-    name: 'Amstel Gold Race',
-    startDate: '2025-04-20',
-    endDate: '2025-04-20',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'NL',
-  },
-  {
-    id: '10',
-    name: 'Strade Bianche',
-    startDate: '2025-03-08',
-    endDate: '2025-03-08',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'IT',
-  },
-  {
-    id: '11',
-    name: 'Strade Bianche Women',
-    startDate: '2025-03-08',
-    endDate: '2025-03-08',
-    category: RaceCategory.WomenWorldTour,
-    gender: Gender.Women,
-    country: 'IT',
-  },
-  {
-    id: '12',
-    name: 'Tour Down Under',
-    startDate: '2025-01-14',
-    endDate: '2025-01-19',
-    category: RaceCategory.WorldTour,
-    gender: Gender.Men,
-    country: 'AU',
-  },
-];
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-// Function to get all races
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+async function readCache<T>(key: string): Promise<T | null> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    const entry: CacheEntry<T> = JSON.parse(raw);
+    if (Date.now() - entry.timestamp > CACHE_TTL) return null;
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCache<T>(key: string, data: T): Promise<void> {
+  try {
+    const entry: CacheEntry<T> = { data, timestamp: Date.now() };
+    await AsyncStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+// Get all races — tries remote first, falls back to cached, then bundled JSON
 export const fetchRaces = async (): Promise<ApiResponse> => {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  return {
-    success: true,
-    data: mockRaces,
-  };
+  const cached = await readCache<Race[]>('races_cache');
+  if (cached) {
+    return { success: true, data: cached };
+  }
+
+  try {
+    const response = await axios.get<Race[]>(RACES_URL, { timeout: 10000 });
+    await writeCache('races_cache', response.data);
+    return { success: true, data: response.data };
+  } catch {
+    return { success: true, data: racesData as Race[] };
+  }
+};
+
+// Fetch startlist for a race by its id — throws on network/parse errors, caller handles empty (404)
+export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> => {
+  const cacheKey = `startlist_${raceId}`;
+  const cached = await readCache<StartlistTeam[]>(cacheKey);
+  if (cached) return cached;
+
+  const url = `${STARTLIST_BASE_URL}/${raceId}.json`;
+  const response = await axios.get<StartlistTeam[]>(url, { timeout: 10000 });
+  await writeCache(cacheKey, response.data);
+  return response.data;
 };
 
 // Filter races by gender
 export const filterRacesByGender = (races: Race[], gender: Gender | null): Race[] => {
   if (!gender) return races;
-  return races.filter(race => race.gender === gender);
+  return races.filter((race) => race.gender === gender);
 };
 
 // Get races for a specific date
 export const getRacesForDate = (races: Race[], date: string): Race[] => {
-  return races.filter(race => {
+  return races.filter((race) => {
     const startDate = new Date(race.startDate);
     const endDate = new Date(race.endDate);
     const targetDate = new Date(date);
-    
-    // Reset hours to compare dates only
+
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(0, 0, 0, 0);
     targetDate.setHours(0, 0, 0, 0);
-    
+
     return targetDate >= startDate && targetDate <= endDate;
   });
 };
-
-// In a future implementation, replace this with actual API calls:
-// Example:
-/*
-export const fetchRacesFromAPI = async (): Promise<ApiResponse> => {
-  try {
-    const response = await axios.get('https://api.example.com/races');
-    return {
-      success: true,
-      data: response.data,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      data: [],
-      error: 'Failed to fetch races',
-    };
-  }
-};
-*/

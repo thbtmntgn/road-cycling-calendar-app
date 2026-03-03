@@ -1,18 +1,13 @@
 import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity,
-  ScrollView
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import RaceItem from './RaceItem';
-import { Race, Gender, RaceCategory } from '../types';
+import { Race, RaceCategory } from '../types';
 
 interface RacesListProps {
   races: Race[];
   showEmptyMessage?: boolean;
+  onPressRace?: (race: Race) => void;
 }
 
 interface Section {
@@ -21,36 +16,30 @@ interface Section {
   isOpen: boolean;
 }
 
-const RacesList: React.FC<RacesListProps> = ({ 
-  races, 
-  showEmptyMessage = true 
-}) => {
-  // Group races by category
+const RacesList: React.FC<RacesListProps> = ({ races, showEmptyMessage = true, onPressRace }) => {
   const groupRacesByCategory = (): Section[] => {
     const sections: { [key: string]: Race[] } = {};
-    
-    // Group races by their category
-    races.forEach(race => {
+
+    races.forEach((race) => {
       if (!sections[race.category]) {
         sections[race.category] = [];
       }
       sections[race.category].push(race);
     });
-    
-    // Convert to array and sort by category priority
+
     const categoryOrder = {
       [RaceCategory.WorldTour]: 1,
       [RaceCategory.WomenWorldTour]: 2,
       [RaceCategory.ProSeries]: 3,
       [RaceCategory.WomenProSeries]: 4,
-      [RaceCategory.Continental]: 5
+      [RaceCategory.Continental]: 5,
     };
-    
+
     return Object.keys(sections)
-      .map(category => ({
+      .map((category) => ({
         title: category,
         data: sections[category],
-        isOpen: true // Default to open
+        isOpen: true,
       }))
       .sort((a, b) => {
         const aPriority = categoryOrder[a.title as RaceCategory] || 99;
@@ -58,46 +47,32 @@ const RacesList: React.FC<RacesListProps> = ({
         return aPriority - bPriority;
       });
   };
-  
-  // Section visibility state
+
   const [sections, setSections] = React.useState<Section[]>(groupRacesByCategory());
-  
-  // Update sections when races prop changes
+
   React.useEffect(() => {
     setSections(groupRacesByCategory());
-  }, [races]);
-  
-  // Toggle section open/closed
+  }, [races]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleSection = (sectionTitle: string) => {
-    setSections(prevSections => 
-      prevSections.map(section => 
-        section.title === sectionTitle 
-          ? { ...section, isOpen: !section.isOpen } 
-          : section
+    setSections((prevSections) =>
+      prevSections.map((section) =>
+        section.title === sectionTitle ? { ...section, isOpen: !section.isOpen } : section
       )
     );
   };
-  
-  // Render section header
+
   const renderSectionHeader = (section: Section) => (
-    <TouchableOpacity 
-      style={styles.sectionHeader}
-      onPress={() => toggleSection(section.title)}
-    >
+    <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(section.title)}>
       <View style={styles.sectionTitleContainer}>
         <Text style={styles.sectionTitle}>{section.title}</Text>
         <Text style={styles.sectionCount}>{section.data.length}</Text>
       </View>
-      
-      <Ionicons 
-        name={section.isOpen ? 'chevron-up' : 'chevron-down'} 
-        size={20} 
-        color="#AAAAAA" 
-      />
+
+      <Ionicons name={section.isOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#AAAAAA" />
     </TouchableOpacity>
   );
-  
-  // If no races, show empty message
+
   if (races.length === 0 && showEmptyMessage) {
     return (
       <View style={styles.emptyContainer}>
@@ -107,25 +82,20 @@ const RacesList: React.FC<RacesListProps> = ({
     );
   }
 
-  // For debugging
-  const debugRender = (race: Race) => (
-    <View key={race.id} style={styles.debugItem}>
-      <Text style={styles.debugText}>Name: {race.name}</Text>
-      <Text style={styles.debugText}>Category: {race.category}</Text>
-      <Text style={styles.debugText}>Date: {race.startDate} to {race.endDate}</Text>
-    </View>
-  );
-  
   return (
     <ScrollView style={styles.container}>
-      {sections.map(section => (
+      {sections.map((section) => (
         <View key={section.title} style={styles.section}>
           {renderSectionHeader(section)}
-          
+
           {section.isOpen && section.data.length > 0 && (
             <View style={styles.raceItemsContainer}>
-              {section.data.map(race => (
-                <RaceItem key={race.id} race={race} />
+              {section.data.map((race) => (
+                <RaceItem
+                  key={race.id}
+                  race={race}
+                  onPress={onPressRace ? () => onPressRace(race) : undefined}
+                />
               ))}
             </View>
           )}
@@ -181,16 +151,6 @@ const styles = StyleSheet.create({
     paddingTop: 5,
     paddingBottom: 5,
   },
-  debugItem: {
-    margin: 10,
-    padding: 10,
-    backgroundColor: '#444',
-    borderRadius: 5
-  },
-  debugText: {
-    color: '#FFF',
-    fontSize: 12
-  }
 });
 
 export default RacesList;

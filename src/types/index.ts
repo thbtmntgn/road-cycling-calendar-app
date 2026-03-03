@@ -16,6 +16,7 @@ export enum Gender {
 // Race data interface
 export interface Race {
   id: string;
+  pcsSlug?: string; // PCS URL slug, used for future RaceStartlist fetch
   name: string;
   startDate: string;
   endDate: string;
@@ -35,4 +36,15 @@ export interface ApiResponse {
   success: boolean;
   data: Race[];
   error?: string;
+}
+
+// Startlist types
+export interface Rider {
+  name: string;
+  pcsSlug?: string;
+}
+
+export interface StartlistTeam {
+  teamName: string;
+  riders: Rider[];
 }

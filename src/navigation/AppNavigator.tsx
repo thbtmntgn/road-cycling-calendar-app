@@ -1,17 +1,56 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import CalendarScreen from '../screens/CalendarScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
+import RaceDetailScreen from '../screens/RaceDetailScreen';
+import { CalendarStackParamList, FavoritesStackParamList } from './types';
 
-// Define the navigator parameter list
-type TabParamList = {
-  Calendar: undefined;
-  Favorites: undefined;
+const CalendarStack = createNativeStackNavigator<CalendarStackParamList>();
+const FavoritesStack = createNativeStackNavigator<FavoritesStackParamList>();
+const Tab = createBottomTabNavigator();
+
+const stackScreenOptions = {
+  headerStyle: { backgroundColor: '#111111' },
+  headerTintColor: '#ffffff',
+  contentStyle: { backgroundColor: '#1a1a1a' },
 };
 
-const Tab = createBottomTabNavigator<TabParamList>();
+function CalendarStackNavigator() {
+  return (
+    <CalendarStack.Navigator screenOptions={stackScreenOptions}>
+      <CalendarStack.Screen
+        name="CalendarMain"
+        component={CalendarScreen}
+        options={{ title: 'Race Calendar' }}
+      />
+      <CalendarStack.Screen
+        name="RaceDetail"
+        component={RaceDetailScreen}
+        options={{ title: '' }}
+      />
+    </CalendarStack.Navigator>
+  );
+}
+
+function FavoritesStackNavigator() {
+  return (
+    <FavoritesStack.Navigator screenOptions={stackScreenOptions}>
+      <FavoritesStack.Screen
+        name="FavoritesMain"
+        component={FavoritesScreen}
+        options={{ title: 'My Favorites' }}
+      />
+      <FavoritesStack.Screen
+        name="RaceDetail"
+        component={RaceDetailScreen}
+        options={{ title: '' }}
+      />
+    </FavoritesStack.Navigator>
+  );
+}
 
 const AppNavigator = () => {
   return (
@@ -27,18 +66,13 @@ const AppNavigator = () => {
             paddingBottom: 5,
             paddingTop: 5,
           },
-          headerStyle: {
-            backgroundColor: '#111111',
-            shadowColor: '#333333',
-          },
-          headerTintColor: '#ffffff',
+          headerShown: false,
         }}
       >
         <Tab.Screen
           name="Calendar"
-          component={CalendarScreen}
+          component={CalendarStackNavigator}
           options={{
-            title: 'Race Calendar',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="calendar" color={color} size={size} />
             ),
@@ -46,9 +80,8 @@ const AppNavigator = () => {
         />
         <Tab.Screen
           name="Favorites"
-          component={FavoritesScreen}
+          component={FavoritesStackNavigator}
           options={{
-            title: 'My Favorites',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="star" color={color} size={size} />
             ),
