@@ -146,6 +146,20 @@ def fetch_race_slugs(
     return results
 
 
+def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[str]:
+    """Map PCS stage_type / profile_icon fields to app stageType values."""
+    if stage_type_str in ("ITT", "TTT"):
+        return "tt"
+    icon = profile_icon_str or ""
+    if icon in ("p0", "p1"):
+        return "flat"
+    elif icon in ("p2", "p3"):
+        return "hilly"
+    elif icon in ("p4", "p5"):
+        return "mountain"
+    return None
+
+
 def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
     """
     Use procyclingstats.Race to enrich a race with structured data.
@@ -192,7 +206,7 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
         "gender": gender,
     }
 
-    # For one-day races, fetch distance from the /result sub-page
+    # For one-day races, fetch distance/stageType/elevation from the /result sub-page
     # (Race.stages() returns empty for one-day races; the stage info block
     # is only present on the result page, not the race overview page)
     if start_date == end_date:
@@ -202,8 +216,20 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
             distance = detail.distance() or 0
             if distance:
                 result["distance"] = distance
+            start_time = (detail.start_time() or "").strip()
+            if start_time and start_time != "-":
+                result["startTime"] = start_time
+            stage_type = pcs_to_stage_type(
+                detail.stage_type() or "",
+                detail.profile_icon() or "",
+            )
+            if stage_type:
+                result["stageType"] = stage_type
+            elevation = detail.vertical_meters() or 0
+            if elevation:
+                result["elevation"] = elevation
         except Exception:
-            pass  # distance stays absent if page not available yet
+            pass  # fields stay absent if page not available yet
 
     return result
 
@@ -292,11 +318,13 @@ def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list
         if raw_date and len(raw_date) == 5 and year:
             raw_date = f"{year}-{raw_date}"
 
-        # Fetch full stage details (departure, arrival, distance, start_time)
+        # Fetch full stage details (departure, arrival, distance, start_time, stageType, elevation)
         departure = ""
         arrival = ""
         distance = 0
         start_time = ""
+        stage_type = None
+        elevation = 0
         if stage_url:
             try:
                 detail = PCSStage(stage_url)
@@ -304,17 +332,27 @@ def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list
                 arrival = detail.arrival() or ""
                 distance = detail.distance() or 0
                 start_time = (detail.start_time() or "").strip()
+                stage_type = pcs_to_stage_type(
+                    detail.stage_type() or "",
+                    detail.profile_icon() or "",
+                )
+                elevation = detail.vertical_meters() or 0
             except Exception:
                 pass  # leave fields empty if stage page not yet available
 
-        result.append({
+        stage_dict: dict = {
             "stageNumber": stage_number,
             "date": raw_date,
             "departure": departure,
             "arrival": arrival,
             "distance": distance,
             "startTime": start_time,
-        })
+        }
+        if stage_type:
+            stage_dict["stageType"] = stage_type
+        if elevation:
+            stage_dict["elevation"] = elevation
+        result.append(stage_dict)
 
     return result if result else None
 

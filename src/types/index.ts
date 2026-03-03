@@ -27,7 +27,10 @@ export interface Race {
   category: RaceCategory;
   gender: Gender;
   country: string;
-  distance?: number; // km, only set for one-day races
+  distance?: number;  // km, only set for one-day races
+  startTime?: string; // "HH:MM", one-day races only
+  stageType?: 'flat' | 'hilly' | 'mountain' | 'tt'; // one-day races only
+  elevation?: number; // vertical metres, one-day races only
 }
 
 // Grouped races by date
@@ -50,6 +53,8 @@ export interface Stage {
   arrival: string;
   distance: number;    // km
   startTime?: string;  // "HH:MM"
+  stageType?: 'flat' | 'hilly' | 'mountain' | 'tt';
+  elevation?: number;  // vertical metres
 }
 
 // Startlist types
