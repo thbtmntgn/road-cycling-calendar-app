@@ -38,6 +38,10 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 
 ## Screenshots
 
-![Home](docs/home.png)
-![Home 2](docs/home1.png)
-![Startlist](docs/startlist.png)
+<table>
+  <tr>
+    <td><img src="docs/home.png" width="200"/></td>
+    <td><img src="docs/home1.png" width="200"/></td>
+    <td><img src="docs/startlist.png" width="200"/></td>
+  </tr>
+</table>
