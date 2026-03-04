@@ -16,7 +16,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install procyclingstats cloudscraper beautifulsoup4
-      - run: python scripts/fetch_races.py
+      - run: |
+          DATE_FROM=$(date -d "1 month ago" +%Y-%m-%d)
+          DATE_TO=$(date -d "1 month" +%Y-%m-%d)
+          python scripts/fetch_races.py --date-from "$DATE_FROM" --date-to "$DATE_TO"
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'chore: update race data and startlists'
