@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
   StyleSheet,
@@ -166,6 +167,31 @@ const DurationBlock: React.FC<DurationBlockProps> = ({ label, color }) => {
   );
 };
 
+interface TeamJerseyProps {
+  uri?: string;
+}
+
+const TeamJersey: React.FC<TeamJerseyProps> = ({ uri }) => {
+  const [hasError, setHasError] = useState(false);
+
+  if (!uri || hasError) {
+    return null;
+  }
+
+  return (
+    <View style={styles.teamJerseySection}>
+      <View style={styles.teamJerseyFrame}>
+        <Image
+          source={{ uri }}
+          style={styles.teamJerseyImage}
+          resizeMode="contain"
+          onError={() => setHasError(true)}
+        />
+      </View>
+    </View>
+  );
+};
+
 interface RaceSummaryTileProps {
   race: Race;
 }
@@ -178,6 +204,9 @@ const RaceSummaryTile: React.FC<RaceSummaryTileProps> = ({ race }) => {
   const stageType = race.stageType as StageTypeKey | undefined;
   const isMonument = isOneDay && race.gender === Gender.Men && isMonumentRace(race);
   const raceFlag = getCountryFlag(race.country);
+  const departure = isOneDay ? (race.departure || '') : '';
+  const arrival = isOneDay ? (race.arrival || '') : '';
+  const hasRoute = !!(departure || arrival);
 
   return (
     <View style={styles.summaryCard}>
@@ -211,6 +240,22 @@ const RaceSummaryTile: React.FC<RaceSummaryTileProps> = ({ race }) => {
           </View>
         </View>
 
+        {hasRoute ? (
+          <View style={styles.summaryRouteBlock}>
+            {departure ? (
+              <View style={styles.summaryRouteLine}>
+                <Text style={styles.summaryRouteLabel}>Start</Text>
+                <Text style={[styles.summaryRouteText, styles.summaryRouteDeparture]}>{departure}</Text>
+              </View>
+            ) : null}
+            {arrival ? (
+              <View style={styles.summaryRouteLine}>
+                <Text style={styles.summaryRouteLabel}>Finish</Text>
+                <Text style={[styles.summaryRouteText, styles.summaryRouteArrival]}>{arrival}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {isMonument ? (
           <View style={styles.summarySecondaryRow}>
             <MonumentBadge />
@@ -327,6 +372,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                   );
                 })}
               </View>
+              <TeamJersey uri={item.jerseyImageUrl} />
             </View>
           </View>
         </View>
@@ -522,6 +568,35 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
+  summaryRouteBlock: {
+    gap: 6,
+  },
+  summaryRouteLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  summaryRouteLabel: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    paddingTop: 2,
+    minWidth: 42,
+  },
+  summaryRouteText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  summaryRouteDeparture: {
+    color: '#A1A1AA',
+  },
+  summaryRouteArrival: {
+    color: '#F4F4F5',
+    fontWeight: '700',
+  },
   startlistHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -644,6 +719,29 @@ const styles = StyleSheet.create({
   },
   ridersList: {
     gap: 10,
+  },
+  teamJerseySection: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#252833',
+    alignItems: 'center',
+  },
+  teamJerseyFrame: {
+    width: '100%',
+    minHeight: 120,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2A2A31',
+    backgroundColor: '#12141A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  teamJerseyImage: {
+    width: '100%',
+    height: 92,
   },
   riderRow: {
     flexDirection: 'row',

@@ -11,6 +11,7 @@ interface RacesListProps {
   onPressRace?: (race: Race) => void;
   stagesMap?: Record<string, Stage | null>;
   stageCountsMap?: Record<string, number>;
+  bottomPadding?: number;
 }
 
 interface Section {
@@ -41,6 +42,7 @@ const RacesList: React.FC<RacesListProps> = ({
   onPressRace,
   stagesMap,
   stageCountsMap,
+  bottomPadding = 28,
 }) => {
   const sections = groupRacesByCategory(races);
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({});
@@ -80,7 +82,10 @@ const RacesList: React.FC<RacesListProps> = ({
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.contentContainer, { paddingBottom: bottomPadding }]}
+    >
       {sections.map((section) => {
         const presentation = getRacePresentation(section.category);
         const isOpen = openSections[section.category] ?? true;
@@ -171,7 +176,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 28,
   },
   section: {
     marginBottom: 12,

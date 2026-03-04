@@ -9,7 +9,7 @@ npm start              # Start development server (runs local PCS data check fir
 npm run ios            # Launch iOS simulator (runs local PCS data check first)
 npm run android        # Launch Android emulator (runs local PCS data check first)
 npm run web            # Open in browser (runs local PCS data check first)
-npm run fetch-races     # Scrape PCS for Q1 2026 only (--date-from 2026-01-01 --date-to 2026-03-31)
+npm run fetch-races     # Scrape PCS for a rolling 2-month window centered on today
 npm run fetch-races-full # Scrape PCS for the full season
 npm run lint            # Run ESLint
 npm run format          # Run Prettier
@@ -26,10 +26,9 @@ React Native + Expo app for tracking professional cycling races. Uses stack navi
 - PCS data is local-only. Run `npm run fetch-races` or `npm run fetch-races-full` to generate `src/generated/pcsData.ts` on your machine. That file is ignored by Git and should never be committed.
 - Date logic uses `dayjs`. The `DateSelector` component generates a range of dates and `dateUtils.ts` handles relative labels ("Today", "Tomorrow").
 - `RacesList` groups races by `RaceCategory` with collapsible sections. Categories are defined in `src/types/index.ts`.
-- Network connectivity is monitored via `@react-native-community/netinfo`; `NoConnection` component is shown when offline.
 - Accent color: `#4CAF50` (green). Dark theme throughout.
 
-**Tech stack:** React Native 0.83 / Expo 55, TypeScript strict mode, React Navigation v7, Zustand 5, dayjs.
+**Tech stack:** React Native 0.83 / Expo 55, TypeScript strict mode, React Navigation v7, dayjs.
 
 **PCS scraper notes (`scripts/fetch_races.py`):**
 
@@ -39,5 +38,8 @@ React Native + Expo app for tracking professional cycling races. Uses stack navi
 - NC and WC are filtered to senior road races only — slugs with `-itt`, `u23`, `-mj`, `-wj`, `-jr`, `junior`, `-crit` are skipped
 - Date pre-filtering happens in `fetch_race_slugs` by parsing the date from the races.php table (avoids HTTP requests for out-of-range races)
 - One-day race distance: `Stage(f"{slug}/result").distance()` — `Race.stages()` returns empty for one-day races
-- The scraper always performs a full pass and writes a single local runtime file
+- The default fetch uses a rolling window of 1 month before today through 1 month after today; `--full-season` disables that window
+- Startlists are refreshed for completed races plus upcoming races whose start date is within the next 7 days; stage pages are still fetched for all multi-day races in the selected window
+- The scraper uses limited race-level parallelism (`--workers`, default 4) and a persistent local cache at `scripts/.cache/team_country_cache.json` for team country lookups
+- The scraper always writes a single local runtime file
 - Developers should use the npm scripts, not `expo start` directly, so the local-data check always runs

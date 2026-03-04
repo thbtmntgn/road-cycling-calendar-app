@@ -10,6 +10,7 @@ import {
 import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateSelector from '../components/DateSelector';
 import RacesList from '../components/RacesList';
@@ -22,10 +23,12 @@ interface Props {
   navigation: NativeStackNavigationProp<CalendarStackParamList, 'Calendar'>;
 }
 
-const INITIAL_DAYS_BACKWARD = 2;
-const INITIAL_DAYS_FORWARD = 10;
+const DEFAULT_DATE_WINDOW_DAYS = 7;
 const DATE_WINDOW_EXTENSION = 14;
 const DATE_EDGE_THRESHOLD = 2;
+const TODAY_SHORTCUT_THRESHOLD_DAYS = 3;
+const TODAY_FADE_HEIGHT = 96;
+const TODAY_SHORTCUT_BOTTOM_PADDING = TODAY_FADE_HEIGHT + 16;
 
 const prependDates = (firstDate: string, count: number): string[] =>
   Array.from({ length: count }, (_, index) =>
@@ -43,7 +46,7 @@ const appendDates = (lastDate: string, count: number): string[] =>
 
 const extendDateWindow = (currentDates: string[], targetDate: string): string[] => {
   if (currentDates.length === 0) {
-    return getDateRange(INITIAL_DAYS_BACKWARD, INITIAL_DAYS_FORWARD);
+    return getDateRange(DEFAULT_DATE_WINDOW_DAYS, DEFAULT_DATE_WINDOW_DAYS);
   }
 
   const selectedIndex = currentDates.indexOf(targetDate);
@@ -66,7 +69,7 @@ const extendDateWindow = (currentDates: string[], targetDate: string): string[] 
 
 const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [dates, setDates] = useState<string[]>(
-    getDateRange(INITIAL_DAYS_BACKWARD, INITIAL_DAYS_FORWARD)
+    getDateRange(DEFAULT_DATE_WINDOW_DAYS, DEFAULT_DATE_WINDOW_DAYS)
   );
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
   const [races, setRaces] = useState<Race[]>([]);
@@ -151,6 +154,19 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     setSelectedDate(date);
   };
 
+  const todayDate = getTodayDate();
+  const showTodayShortcut =
+    Math.abs(dayjs(selectedDate).diff(dayjs(todayDate), 'day')) >= TODAY_SHORTCUT_THRESHOLD_DAYS;
+
+  const handleTodayPress = () => {
+    setDates((currentDates) =>
+      currentDates.includes(todayDate)
+        ? extendDateWindow(currentDates, todayDate)
+        : getDateRange(DEFAULT_DATE_WINDOW_DAYS, DEFAULT_DATE_WINDOW_DAYS)
+    );
+    setSelectedDate(todayDate);
+  };
+
   const handleRacePress = (race: Race) => {
     navigation.navigate('RaceDetail', { race });
   };
@@ -232,8 +248,27 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             onPressRace={handleRacePress}
             stagesMap={stagesMap}
             stageCountsMap={stageCountsMap}
+            bottomPadding={showTodayShortcut ? TODAY_SHORTCUT_BOTTOM_PADDING : 28}
           />
         )}
+
+        {showTodayShortcut ? (
+          <>
+            <LinearGradient
+              colors={['transparent', 'rgba(10,10,12,0.85)', '#0A0A0C']}
+              locations={[0, 0.4, 0.7]}
+              style={styles.todayScrim}
+              pointerEvents="none"
+            />
+            <TouchableOpacity
+              style={styles.todayShortcut}
+              onPress={handleTodayPress}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.todayShortcutText}>Today</Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -303,6 +338,33 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  todayScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: TODAY_FADE_HEIGHT,
+  },
+  todayShortcut: {
+    position: 'absolute',
+    bottom: 18,
+    alignSelf: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  todayShortcutText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.1,
   },
 });
 

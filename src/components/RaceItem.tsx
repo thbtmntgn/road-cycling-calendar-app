@@ -1,7 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { getRacePresentation, isMonumentRace } from '../constants/racePresentation';
+import {
+  getRacePresentation,
+  isGrandTourRace,
+  isMajorTourRace,
+  isMonumentRace,
+  isTopClassicRace,
+} from '../constants/racePresentation';
 import { Gender, Race, Stage } from '../types';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -99,12 +105,27 @@ const tagStyles = StyleSheet.create({
   },
 });
 
-const MonumentBadge: React.FC = () => (
-  <View style={monumentStyles.badge}>
-    <MaterialCommunityIcons name="trophy-outline" size={12} color="#F7D774" />
-    <Text style={monumentStyles.text}>Monument</Text>
-  </View>
-);
+type RaceTierBadgeType = 'grand-tour' | 'monument' | 'major-tour' | 'top-classic';
+
+const RACE_TIER_BADGE_CONFIG: Record<
+  RaceTierBadgeType,
+  { icon: MCIName; color: string; bg: string; border: string; label: string }
+> = {
+  'grand-tour':  { icon: 'crown',          color: '#FBBF24', bg: '#1C1408', border: '#4A3308', label: 'Grand Tour'  },
+  'monument':    { icon: 'trophy-outline', color: '#F7D774', bg: '#342A10', border: '#5B4716', label: 'Monument'    },
+  'major-tour':  { icon: 'flag-variant',   color: '#38BDF8', bg: '#071723', border: '#0E3A5A', label: 'Major Tour'  },
+  'top-classic': { icon: 'star-four-points-outline', color: '#C084FC', bg: '#150B27', border: '#4A1A8A', label: 'Top Classic' },
+};
+
+const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType }> = ({ tier }) => {
+  const { icon, color, bg, border, label } = RACE_TIER_BADGE_CONFIG[tier];
+  return (
+    <View style={[raceTierStyles.badge, { backgroundColor: bg, borderColor: border }]}>
+      <MaterialCommunityIcons name={icon} size={12} color={color} />
+      <Text style={[raceTierStyles.text, { color }]}>{label}</Text>
+    </View>
+  );
+};
 
 interface DurationBadgeProps {
   format: string;
@@ -122,7 +143,7 @@ const DurationBadge: React.FC<DurationBadgeProps> = ({ format, color }) => {
   );
 };
 
-const monumentStyles = StyleSheet.create({
+const raceTierStyles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -132,11 +153,8 @@ const monumentStyles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     gap: 5,
-    backgroundColor: '#342A10',
-    borderColor: '#5B4716',
   },
   text: {
-    color: '#F7D774',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.4,
@@ -328,7 +346,13 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
   const stageType = (
     hasActiveStage ? currentStage!.stageType : isOneDay ? race.stageType : undefined
   ) as StageTypeKey | undefined;
-  const isMonument = isOneDay && race.gender === Gender.Men && isMonumentRace(race);
+
+  const raceTier: RaceTierBadgeType | null =
+    isGrandTourRace(race) ? 'grand-tour' :
+    isMajorTourRace(race) ? 'major-tour' :
+    (isOneDay && race.gender === Gender.Men && isMonumentRace(race)) ? 'monument' :
+    isTopClassicRace(race) ? 'top-classic' :
+    null;
 
   const elevation = hasActiveStage ? currentStage!.elevation : race.elevation;
   const distance = isOneDay ? race.distance : hasActiveStage ? currentStage!.distance : undefined;
@@ -339,8 +363,16 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
       ? currentStage!.startTime
       : null;
 
-  const departure = hasActiveStage ? currentStage!.departure || '' : '';
-  const arrival = hasActiveStage ? currentStage!.arrival || '' : '';
+  const departure = hasActiveStage
+    ? currentStage!.departure || ''
+    : isOneDay
+      ? race.departure || ''
+      : '';
+  const arrival = hasActiveStage
+    ? currentStage!.arrival || ''
+    : isOneDay
+      ? race.arrival || ''
+      : '';
   const hasRoute = !!(departure || arrival);
   const stageFormat = totalStages ? getRaceFormat(totalStages) : null;
 
@@ -423,23 +455,27 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
             <>
               {hasRoute && (
                 <View style={styles.routeBlock}>
-                  <View style={styles.routeLine}>
-                    <Text style={styles.routeLabel}>Start</Text>
-                    <Text style={[styles.routeText, styles.routeDeparture]}>{departure}</Text>
-                  </View>
-                  <View style={styles.routeLine}>
-                    <Text style={styles.routeLabel}>Finish</Text>
-                    <Text style={[styles.routeText, styles.routeArrival]}>{arrival}</Text>
-                  </View>
+                  {departure ? (
+                    <View style={styles.routeLine}>
+                      <Text style={styles.routeLabel}>Start</Text>
+                      <Text style={[styles.routeText, styles.routeDeparture]}>{departure}</Text>
+                    </View>
+                  ) : null}
+                  {arrival ? (
+                    <View style={styles.routeLine}>
+                      <Text style={styles.routeLabel}>Finish</Text>
+                      <Text style={[styles.routeText, styles.routeArrival]}>{arrival}</Text>
+                    </View>
+                  ) : null}
                 </View>
               )}
-              {isMonument ? (
-                <View style={styles.highlightRow}>
-                  <MonumentBadge />
-                </View>
-              ) : null}
             </>
           )}
+          {raceTier ? (
+            <View style={styles.highlightRow}>
+              <RaceTierBadge tier={raceTier} />
+            </View>
+          ) : null}
         </View>
         {!isRestDay && (startTime || distance || elevation) ? (
           <View style={styles.metadataRow}>
@@ -553,12 +589,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   routeBlock: {
-    marginTop: 8,
     gap: 6,
   },
   routeLine: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
   },
   routeText: {
@@ -572,7 +607,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    paddingTop: 2,
     minWidth: 42,
   },
   routeDeparture: {

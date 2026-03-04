@@ -27,6 +27,8 @@ export interface Race {
   category: RaceCategory;
   gender: Gender;
   country: string;
+  departure?: string; // one-day races only
+  arrival?: string;   // one-day races only
   distance?: number;  // km, only set for one-day races
   startTime?: string; // "HH:MM", one-day races only
   stageType?: 'flat' | 'hilly' | 'mountain' | 'tt'; // one-day races only
@@ -67,5 +69,6 @@ export interface Rider {
 export interface StartlistTeam {
   teamName: string;
   countryCode?: string; // ISO 3166-1 alpha-2 team licence country
+  jerseyImageUrl?: string;
   riders: Rider[];
 }

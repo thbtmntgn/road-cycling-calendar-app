@@ -6,22 +6,34 @@ Requirements:
     pip install procyclingstats cloudscraper beautifulsoup4
 
 Usage:
-    python3 scripts/fetch_races.py [--year 2026]
+    python3 scripts/fetch_races.py
+    python3 scripts/fetch_races.py --full-season
 """
 
 import json
 import time
 import argparse
+import calendar
+import threading
 import warnings
+from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from pathlib import Path
 
-# Suppress urllib3 NotOpenSSLWarning on older macOS (LibreSSL)
+# Suppress urllib3 LibreSSL warning on older macOS.
+# The first filter must be registered before importing urllib3 at all.
+warnings.filterwarnings(
+    "ignore",
+    message=r"urllib3 v2 only supports OpenSSL 1\.1\.1\+.*LibreSSL.*",
+    category=Warning,
+)
 try:
     from urllib3.exceptions import NotOpenSSLWarning
-    warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 except ImportError:
     pass
+else:
+    warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 
 import cloudscraper
 from bs4 import BeautifulSoup
@@ -52,12 +64,84 @@ UCI_TOUR_TO_CATEGORY = {
 WWT_CATEGORIES = {"1.WWT", "2.WWT"}
 
 GENERATED_PATH = Path(__file__).parent.parent / "src" / "generated" / "pcsData.ts"
+TEAM_COUNTRY_CACHE_PATH = Path(__file__).parent / ".cache" / "team_country_cache.json"
+_thread_local = threading.local()
+_CACHE_MISS = object()
 
 
 def create_scraper():
     return cloudscraper.create_scraper(
         browser={"browser": "chrome", "platform": "darwin", "mobile": False}
     )
+
+
+def get_thread_scraper():
+    scraper = getattr(_thread_local, "scraper", None)
+    if scraper is None:
+        scraper = create_scraper()
+        _thread_local.scraper = scraper
+    return scraper
+
+
+def shift_months(base_date: date, delta_months: int) -> date:
+    absolute_month = (base_date.month - 1) + delta_months
+    target_year = base_date.year + absolute_month // 12
+    target_month = (absolute_month % 12) + 1
+    target_day = min(base_date.day, calendar.monthrange(target_year, target_month)[1])
+    return base_date.replace(year=target_year, month=target_month, day=target_day)
+
+
+def compute_default_window(today: Optional[date] = None) -> tuple[str, str]:
+    current_date = today or date.today()
+    return (
+        shift_months(current_date, -1).isoformat(),
+        shift_months(current_date, 1).isoformat(),
+    )
+
+
+def load_team_country_cache() -> dict[str, Optional[str]]:
+    if not TEAM_COUNTRY_CACHE_PATH.exists():
+        return {}
+
+    try:
+        raw = json.loads(TEAM_COUNTRY_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    cache: dict[str, Optional[str]] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        if value is None:
+            cache[key] = None
+            continue
+        if isinstance(value, str):
+            normalized = value.strip().upper()
+            cache[key] = normalized if len(normalized) == 2 and normalized.isalpha() else None
+    return cache
+
+
+def write_team_country_cache(cache: dict[str, Optional[str]]) -> None:
+    TEAM_COUNTRY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TEAM_COUNTRY_CACHE_PATH.write_text(
+        json.dumps(cache, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def build_team_jersey_url(team_url: str) -> Optional[str]:
+    normalized = (team_url or "").strip().rstrip("/")
+    if not normalized:
+        return None
+
+    team_slug = normalized.split("/")[-1]
+    if not team_slug:
+        return None
+
+    return f"https://www.procyclingstats.com/images/shirts/bx/eb/{team_slug}.png"
 
 
 # For NC and WC, exclude non-senior and non-road-race events based on slug keywords
@@ -87,7 +171,7 @@ def fetch_race_slugs(
     dicts with {slug, uci_tour} for each race we care about.
     Date filtering is applied here to avoid fetching details for out-of-range races.
     """
-    scraper = create_scraper()
+    scraper = get_thread_scraper()
     url = f"https://www.procyclingstats.com/races.php?year={year}&circuit="
     print(f"Fetching race list from {url} …")
 
@@ -157,7 +241,7 @@ def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[st
     return None
 
 
-def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
+def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional[dict]:
     """
     Use procyclingstats.Race to enrich a race with structured data.
     Returns None on error (the race is skipped).
@@ -203,13 +287,21 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
         "gender": gender,
     }
 
-    # For one-day races, fetch distance/stageType/elevation from the /result sub-page
+    # For one-day races, fetch route + metadata from the /result sub-page
     # (Race.stages() returns empty for one-day races; the stage info block
     # is only present on the result page, not the race overview page)
     if start_date == end_date:
         try:
             from procyclingstats import Stage as PCSStage
+            if delay > 0:
+                time.sleep(delay)
             detail = PCSStage(f"{slug}/result")
+            departure = (detail.departure() or "").strip()
+            if departure:
+                result["departure"] = departure
+            arrival = (detail.arrival() or "").strip()
+            if arrival:
+                result["arrival"] = arrival
             distance = detail.distance() or 0
             if distance:
                 result["distance"] = distance
@@ -231,49 +323,90 @@ def fetch_race_details(slug: str, uci_tour: str) -> Optional[dict]:
     return result
 
 
-def fetch_startlist(pcs_slug: str) -> Optional[list]:
+def fetch_startlist(
+    pcs_slug: str,
+    team_country_cache: Optional[dict] = None,
+    cache_lock: Optional[threading.Lock] = None,
+    delay: float = 0.0,
+) -> Optional[list]:
     """
     Fetch startlist for a race using procyclingstats.
     Returns a list of { teamName, riders } dicts, or None if not available.
 
-    procyclingstats.RaceStartlist.startlist() returns a flat list of rider dicts:
-      [{ rider_name, rider_url, nationality, rider_number, team_name, team_url }, ...]
-    We group by team_name to produce the nested structure and keep rider nationality.
-    Team licence country is fetched from the team page when team_url is available.
+    Fetches the startlist HTML once with cloudscraper (passing it to RaceStartlist
+    to avoid a double request). Team country codes are resolved by fetching each
+    team page with cloudscraper and parsing the `.page-title span.flag` element.
+    team_country_cache is shared across races to avoid re-fetching the same team page.
     """
-    from procyclingstats import RaceStartlist, Team
+    from procyclingstats import RaceStartlist
     from collections import OrderedDict
 
+    if team_country_cache is None:
+        team_country_cache = {}
+
+    relative_url = f"{pcs_slug}/startlist"
+    full_url = f"https://www.procyclingstats.com/{relative_url}"
+
     try:
-        startlist_obj = RaceStartlist(f"{pcs_slug}/startlist")
+        cs = get_thread_scraper()
+        if delay > 0:
+            time.sleep(delay)
+        resp = cs.get(full_url, timeout=30)
+        resp.raise_for_status()
+        html = resp.text
+
+        # Parse rider data using procyclingstats with pre-fetched HTML (no extra request)
+        startlist_obj = RaceStartlist(relative_url, html=html, update_html=False)
         raw = startlist_obj.startlist()
 
         # Group flat rider list by team_name, preserving first-seen order
         teams: dict = OrderedDict()
-        team_country_cache: dict[str, Optional[str]] = {}
         for rider in raw:
             team_name = rider.get("team_name", "")
             team_url = rider.get("team_url", "")
             if team_name not in teams:
                 country_code = None
+                jersey_image_url = None
                 if team_url:
-                    if team_url not in team_country_cache:
+                    jersey_image_url = build_team_jersey_url(team_url)
+                    lock = cache_lock or threading.Lock()
+                    with lock:
+                        cached_country_code = team_country_cache.get(team_url, _CACHE_MISS)
+                    if cached_country_code is _CACHE_MISS:
+                        fetched_code = None
                         try:
-                            team = Team(team_url)
-                            raw_country = (team.license_country() or team.nationality() or "").strip().upper()
-                            team_country_cache[team_url] = raw_country if len(raw_country) == 2 else None
+                            if delay > 0:
+                                time.sleep(delay)
+                            team_resp = cs.get(
+                                f"https://www.procyclingstats.com/{team_url}", timeout=30
+                            )
+                            team_resp.raise_for_status()
+                            team_soup = BeautifulSoup(team_resp.text, "html.parser")
+                            flag_span = team_soup.select_one(".page-title span.flag")
+                            if flag_span:
+                                classes = flag_span.get("class") or []
+                                fetched_code = next(
+                                    (c.upper() for c in classes if len(c) == 2 and c.isalpha()),
+                                    None,
+                                )
                         except Exception:
-                            team_country_cache[team_url] = None
-                    country_code = team_country_cache[team_url]
+                            fetched_code = None
 
-                team_entry = {"teamName": team_name, "riders": []}
+                        with lock:
+                            country_code = team_country_cache.setdefault(team_url, fetched_code)
+                    else:
+                        country_code = cached_country_code
+
+                team_entry: dict = {"teamName": team_name, "riders": []}
                 if country_code:
                     team_entry["countryCode"] = country_code
+                if jersey_image_url:
+                    team_entry["jerseyImageUrl"] = jersey_image_url
                 teams[team_name] = team_entry
 
             rider_name = rider.get("rider_name", "")
             if rider_name:
-                rider_entry = {"name": rider_name}
+                rider_entry: dict = {"name": rider_name}
 
                 rider_url = rider.get("rider_url", "")
                 if rider_url:
@@ -292,7 +425,12 @@ def fetch_startlist(pcs_slug: str) -> Optional[list]:
         return None
 
 
-def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list]:
+def fetch_stages(
+    pcs_slug: str,
+    start_date: str,
+    end_date: str,
+    delay: float = 0.0,
+) -> Optional[list]:
     """
     Fetch stage list for a multi-day race using procyclingstats.
     Returns None for one-day races (start_date == end_date) or on error.
@@ -349,6 +487,8 @@ def fetch_stages(pcs_slug: str, start_date: str, end_date: str) -> Optional[list
         elevation = 0
         if stage_url:
             try:
+                if delay > 0:
+                    time.sleep(delay)
                 detail = PCSStage(stage_url)
                 departure = detail.departure() or ""
                 arrival = detail.arrival() or ""
@@ -398,7 +538,16 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch UCI race data from ProCyclingStats")
     parser.add_argument("--year", type=int, default=2026, help="Season year (default: 2026)")
     parser.add_argument(
-        "--delay", type=float, default=1.0, help="Delay between requests in seconds (default: 1)"
+        "--delay", type=float, default=0.1,
+        help="Light per-request delay in seconds for direct detail fetches (default: 0.1)"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=4,
+        help="Maximum parallel worker threads for race fetching (default: 4)"
+    )
+    parser.add_argument(
+        "--full-season", action="store_true",
+        help="Fetch the full season instead of the default rolling 2-month window"
     )
     parser.add_argument(
         "--date-from", type=str, default=None,
@@ -410,29 +559,50 @@ def main():
     )
     args = parser.parse_args()
 
-    slugs = fetch_race_slugs(args.year, date_from=args.date_from, date_to=args.date_to)
-    races = []
+    if args.full_season and (args.date_from or args.date_to):
+        parser.error("--full-season cannot be combined with --date-from or --date-to")
 
-    for i, item in enumerate(slugs, 1):
+    args.delay = max(0.0, args.delay)
+    args.workers = max(1, args.workers)
+
+    today = date.today()
+    auto_window = False
+    if not args.full_season and not args.date_from and not args.date_to:
+        args.date_from, args.date_to = compute_default_window(today)
+        auto_window = True
+
+    if args.full_season:
+        print("Fetching full season (no date window).")
+    elif args.date_from or args.date_to:
+        window_label = "Resolved rolling window" if auto_window else "Using date window"
+        print(f"{window_label}: {args.date_from or '…'} -> {args.date_to or '…'}")
+
+    slugs = fetch_race_slugs(args.year, date_from=args.date_from, date_to=args.date_to)
+
+    def _fetch_details(indexed_item):
+        index, item = indexed_item
         slug = item["slug"]
         uci_tour = item["uci_tour"]
-        print(f"[{i}/{len(slugs)}] {slug} ({uci_tour})")
+        print(f"[{index}/{len(slugs)}] {slug} ({uci_tour})")
 
-        details = fetch_race_details(slug, uci_tour)
+        details = fetch_race_details(slug, uci_tour, delay=args.delay)
         if not details:
-            continue
+            return None
 
         # Safety net in case the table date differed from the actual race date
         start_date = details.get("startDate", "")
         if args.date_from and start_date < args.date_from:
-            continue
+            return None
         if args.date_to and start_date > args.date_to:
-            continue
+            return None
+        return details
 
-        races.append(details)
-
-        if i < len(slugs):
-            time.sleep(args.delay)
+    if slugs:
+        detail_workers = min(args.workers, len(slugs))
+        with ThreadPoolExecutor(max_workers=detail_workers) as executor:
+            races = [race for race in executor.map(_fetch_details, enumerate(slugs, 1)) if race]
+    else:
+        races = []
 
     print(f"\nFetched {len(races)} races.")
 
@@ -444,51 +614,100 @@ def main():
 
     startlists: dict[str, list] = {}
     stages_map: dict[str, list] = {}
+    team_country_cache = load_team_country_cache()
+    cache_lock = threading.Lock()
+    initial_team_country_cache = json.dumps(team_country_cache, sort_keys=True)
 
-    if races:
-        print(f"\nFetching startlists for {len(races)} races …")
+    today_iso = today.isoformat()
+    startlist_cutoff = (today + timedelta(days=7)).isoformat()
+    races_with_slug = [race for race in races if race.get("pcsSlug")]
 
-    for race in races:
+    def is_startlist_eligible(race: dict) -> bool:
+        start_date = race.get("startDate", "")
+        end_date = race.get("endDate", "")
+        if end_date and end_date <= today_iso:
+            return True
+        return bool(start_date and start_date <= startlist_cutoff)
+
+    eligible_startlist_races = [
+        race
+        for race in races_with_slug
+        if is_startlist_eligible(race)
+    ]
+    skipped_future_startlists = len(races_with_slug) - len(eligible_startlist_races)
+
+    def _fetch_startlist(race):
         pcs_slug = race.get("pcsSlug")
         if not pcs_slug:
-            continue
+            return race["id"], None
 
         race_id = race["id"]
         print(f"  [startlist:{race_id}] {pcs_slug}")
-
-        time.sleep(args.delay)
-        teams = fetch_startlist(pcs_slug)
+        teams = fetch_startlist(
+            pcs_slug,
+            team_country_cache=team_country_cache,
+            cache_lock=cache_lock,
+            delay=args.delay,
+        )
         if teams:
-            startlists[race_id] = teams
             print(f"    Added {len(teams)} teams")
+        return race_id, teams
+
+    if races_with_slug:
+        print(
+            f"\nFetching startlists for {len(eligible_startlist_races)} races "
+            f"(skipping {skipped_future_startlists} races more than 7 days away) …"
+        )
+
+    if eligible_startlist_races:
+        startlist_workers = min(3, args.workers, len(eligible_startlist_races))
+        with ThreadPoolExecutor(max_workers=startlist_workers) as executor:
+            for race_id, teams in executor.map(_fetch_startlist, eligible_startlist_races):
+                if teams:
+                    startlists[race_id] = teams
 
     print(f"\nCollected {len(startlists)} startlists.")
 
     multi_day_races = [race for race in races if race.get("startDate") != race.get("endDate")]
-    if multi_day_races:
-        print(f"\nFetching stages for {len(multi_day_races)} races …")
+    eligible_stage_races = [race for race in multi_day_races if race.get("pcsSlug")]
 
-    for race in multi_day_races:
+    def _fetch_stages(race):
         pcs_slug = race.get("pcsSlug")
         if not pcs_slug:
-            continue
+            return race["id"], None
 
         race_id = race["id"]
         start_date = race.get("startDate", "")
         end_date = race.get("endDate", "")
-
         print(f"  [stages:{race_id}] {pcs_slug}")
-
-        time.sleep(args.delay)
-        stages = fetch_stages(pcs_slug, start_date, end_date)
+        stages = fetch_stages(pcs_slug, start_date, end_date, delay=args.delay)
         if stages:
-            stages_map[race_id] = stages
             print(f"    Added {len(stages)} stages")
+        return race_id, stages
+
+    if eligible_stage_races:
+        print(f"\nFetching stages for {len(eligible_stage_races)} races …")
+        stage_workers = min(2, args.workers, len(eligible_stage_races))
+        with ThreadPoolExecutor(max_workers=stage_workers) as executor:
+            for race_id, stages in executor.map(_fetch_stages, eligible_stage_races):
+                if stages:
+                    stages_map[race_id] = stages
 
     print(f"\nCollected {len(stages_map)} stage files.")
 
+    if json.dumps(team_country_cache, sort_keys=True) != initial_team_country_cache:
+        write_team_country_cache(team_country_cache)
+
     write_generated_data(races, startlists, stages_map)
     print(f"\nWrote local runtime data to {GENERATED_PATH}")
+    print("\nSummary")
+    print(f"  Slugs in date window: {len(slugs)}")
+    print(f"  Races fetched: {len(races)}")
+    print(f"  Startlists eligible: {len(eligible_startlist_races)}")
+    print(f"  Startlists skipped (>7 days away): {skipped_future_startlists}")
+    print(f"  Startlists collected: {len(startlists)}")
+    print(f"  Multi-day races eligible for stages: {len(eligible_stage_races)}")
+    print(f"  Stage sets collected: {len(stages_map)}")
 
 
 if __name__ == "__main__":
