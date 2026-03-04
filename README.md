@@ -6,14 +6,14 @@ A mobile application for tracking professional cycling races.
 
 - View upcoming UCI races
 - Filter races by gender (Men/Women)
-- Mark races as favorites
+- Browse startlists and stage details
 - Dark mode UI
 
 ## Technology Stack
 
-- React Native with Expo
+- React Native 0.83 / Expo 55
 - TypeScript
-- React Navigation
+- React Navigation v7
 - dayjs
 
 ## Setup Instructions
@@ -28,8 +28,7 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 ## Local Data Workflow
 
 - PCS data is fetched only on your computer
-- The scraper writes a local generated file used by the app
-- That generated file is ignored by Git and never needs to be pushed
+- The scraper generates `src/generated/pcsData.ts` locally — that file is ignored by Git and never committed
 - `npm run fetch-races` uses a rolling 2-month window centered on today
 - `npm run fetch-races-full` fetches the full season when you need a complete rebuild
 - Startlists are refreshed for completed races plus upcoming races within the next 7 days; stage details are still fetched for all multi-day races in the selected window
@@ -38,10 +37,6 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 
 ## Screenshots
 
-<table>
-  <tr>
-    <td><img src="docs/home.png" width="200"/></td>
-    <td><img src="docs/home1.png" width="200"/></td>
-    <td><img src="docs/startlist.png" width="200"/></td>
-  </tr>
-</table>
+| | | |
+| --- | --- | --- |
+| ![Home](docs/home.png) | ![Home 1](docs/home1.png) | ![Startlist](docs/startlist.png) |
