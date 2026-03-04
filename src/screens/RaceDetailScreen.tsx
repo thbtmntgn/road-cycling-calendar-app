@@ -18,7 +18,6 @@ import dayjs from 'dayjs';
 import { fetchStartlist } from '../api/racesApi';
 import { getRacePresentation, isMonumentRace } from '../constants/racePresentation';
 import { Gender, Race, StartlistTeam } from '../types';
-import { formatDateRange } from '../utils/dateUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -217,9 +216,6 @@ const RaceSummaryTile: React.FC<RaceSummaryTileProps> = ({ race }) => {
             <MonumentBadge />
           </View>
         ) : null}
-
-        <Text style={styles.summaryDateText}>{formatDateRange(race.startDate, race.endDate)}</Text>
-        <Text style={styles.summaryCountryText}>{race.country}</Text>
         <MetadataChips
           startTime={race.startTime && race.startTime !== '-' ? race.startTime : null}
           distance={race.distance}
@@ -525,18 +521,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     alignItems: 'center',
-  },
-  summaryDateText: {
-    color: '#D1D5DB',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryCountryText: {
-    color: '#8B93A1',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   startlistHeader: {
     flexDirection: 'row',

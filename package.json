@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
+    "prestart": "node scripts/check_local_data.js",
+    "preios": "node scripts/check_local_data.js",
+    "preandroid": "node scripts/check_local_data.js",
+    "preweb": "node scripts/check_local_data.js",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "eslint src/ --ext .ts,.tsx",
+    "lint": "eslint src/ --ext .ts,.tsx --ignore-pattern src/generated/pcsData.ts",
     "format": "prettier --write src/ scripts/",
     "fetch-races": "python3 scripts/fetch_races.py --date-from 2026-01-01 --date-to 2026-03-31",
     "fetch-races-full": "python3 scripts/fetch_races.py"

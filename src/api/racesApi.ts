@@ -1,81 +1,22 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { ApiResponse, Race, Gender, StartlistTeam, Stage } from '../types';
-import racesData from '../data/races.json';
+import pcsData from '../generated/pcsData';
 
-const RACES_URL =
-  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/races.json';
-const STARTLIST_BASE_URL =
-  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/startlists';
-const STAGES_BASE_URL =
-  'https://raw.githubusercontent.com/thbtmntgn/road-cycling-calendar-app/main/src/data/stages';
+const localData = pcsData as {
+  races: Race[];
+  startlists: Record<string, StartlistTeam[]>;
+  stages: Record<string, Stage[]>;
+};
 
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-async function readCache<T>(key: string): Promise<T | null> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) return null;
-    const entry: CacheEntry<T> = JSON.parse(raw);
-    if (Date.now() - entry.timestamp > CACHE_TTL) return null;
-    return entry.data;
-  } catch {
-    return null;
-  }
-}
-
-async function writeCache<T>(key: string, data: T): Promise<void> {
-  try {
-    const entry: CacheEntry<T> = { data, timestamp: Date.now() };
-    await AsyncStorage.setItem(key, JSON.stringify(entry));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-// Get all races — tries remote first, falls back to cached, then bundled JSON
 export const fetchRaces = async (): Promise<ApiResponse> => {
-  const cached = await readCache<Race[]>('races_cache_v3');
-  if (cached) {
-    return { success: true, data: cached };
-  }
-
-  try {
-    const response = await axios.get<Race[]>(RACES_URL, { timeout: 10000 });
-    await writeCache('races_cache_v3', response.data);
-    return { success: true, data: response.data };
-  } catch {
-    return { success: true, data: racesData as Race[] };
-  }
+  return { success: true, data: localData.races };
 };
 
-// Fetch startlist for a race by its id — throws on network/parse errors, caller handles empty (404)
 export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> => {
-  const cacheKey = `startlist_v2_${raceId}`;
-  const cached = await readCache<StartlistTeam[]>(cacheKey);
-  if (cached) return cached;
-
-  const url = `${STARTLIST_BASE_URL}/${raceId}.json`;
-  const response = await axios.get<StartlistTeam[]>(url, { timeout: 10000 });
-  await writeCache(cacheKey, response.data);
-  return response.data;
+  return localData.startlists[raceId] ?? [];
 };
 
-// Fetch stages for a race by its id — throws on network/parse errors, caller handles 404
 export const fetchStages = async (raceId: string): Promise<Stage[]> => {
-  const cacheKey = `stages_${raceId}`;
-  const cached = await readCache<Stage[]>(cacheKey);
-  if (cached) return cached;
-
-  const url = `${STAGES_BASE_URL}/${raceId}.json`;
-  const response = await axios.get<Stage[]>(url, { timeout: 10000 });
-  await writeCache(cacheKey, response.data);
-  return response.data;
+  return localData.stages[raceId] ?? [];
 };
 
 // Filter races by gender
