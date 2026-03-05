@@ -5,4 +5,11 @@ export default {
   races: [],
   startlists: {},
   stages: {},
+  results: {},
+  gcStandings: {},
+  stageResults: {},
+  pointsStandings: {},
+  komStandings: {},
+  youthStandings: {},
+  teamsStandings: {},
 };

@@ -2,6 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
+  getCategoryAccentColor,
+  RACE_SUBGROUP_COLORS,
+  RACE_TYPE_COLORS,
+  RaceSubgroupKey,
+  StageTypeKey,
+} from '../constants/raceColors';
+import {
   getRacePresentation,
   isGrandTourRace,
   isMajorTourRace,
@@ -26,43 +33,17 @@ const countryToFlag = (code: string): string =>
     .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
     .join('');
 
-type StageTypeKey = 'flat' | 'hilly' | 'mountain' | 'tt';
-
-const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; color: string; label: string }> = {
-  flat:     { icon: 'minus',            color: '#4ADE80', label: 'Flat' },
-  hilly:    { icon: 'chart-bell-curve', color: '#FACC15', label: 'Hilly' },
-  mountain: { icon: 'image-filter-hdr', color: '#F87171', label: 'Mountain' },
-  tt:       { icon: 'timer-outline',    color: '#A78BFA', label: 'Time Trial' },
+const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; label: string }> = {
+  flat: { icon: 'minus', label: 'Flat' },
+  hilly: { icon: 'chart-bell-curve', label: 'Hilly' },
+  mountain: { icon: 'image-filter-hdr', label: 'Mountain' },
+  tt: { icon: 'timer-outline', label: 'Time Trial' },
 };
 
-const SIDEBAR_WIDTH = 64;
+const SIDEBAR_WIDTH = 56;
 const BAR_HEIGHT = 52;
 const DOT_SIZE = 5;
 const DOT_GAP = 4;
-
-function getRaceFormat(stageCount?: number): string | null {
-  if (!stageCount) {
-    return null;
-  }
-  if (stageCount <= 4) {
-    return `${stageCount} days`;
-  }
-  if (stageCount <= 8) {
-    return '1 week';
-  }
-  if (stageCount <= 14) {
-    return '2 weeks';
-  }
-  return '3 weeks';
-}
-
-function parseRaceFormat(stageFormat: string): { value: string; label: string } {
-  const [value, ...labelParts] = stageFormat.split(' ');
-  return {
-    value,
-    label: labelParts.join(' ') || '',
-  };
-}
 
 // ─── StageTypeTag ────────────────────────────────────────────────────────────
 
@@ -72,19 +53,34 @@ interface StageTypeTagProps {
 
 const StageTypeTag: React.FC<StageTypeTagProps> = ({ type }) => {
   const config = STAGE_TYPE_CONFIG[type];
+  const colors = RACE_TYPE_COLORS[type];
   if (!config) return null;
   return (
     <View
       style={[
         tagStyles.tag,
-        { backgroundColor: config.color + '14', borderColor: config.color + '35' },
+        { backgroundColor: colors.bg, borderColor: colors.border },
       ]}
     >
-      <MaterialCommunityIcons name={config.icon} size={12} color={config.color} />
-      <Text style={[tagStyles.text, { color: config.color }]}>{config.label}</Text>
+      <MaterialCommunityIcons name={config.icon} size={12} color={colors.text} />
+      <Text style={[tagStyles.text, { color: colors.text }]}>{config.label}</Text>
     </View>
   );
 };
+
+const CategoryTag: React.FC<{ label: string; color: string }> = ({ label, color }) => (
+  <View
+    style={[
+      tagStyles.tag,
+      { backgroundColor: color + '14', borderColor: color + '35' },
+    ]}
+  >
+    <MaterialCommunityIcons name="shape-outline" size={12} color={color} />
+    <Text numberOfLines={1} style={[tagStyles.text, { color }]}>
+      {label}
+    </Text>
+  </View>
+);
 
 const tagStyles = StyleSheet.create({
   tag: {
@@ -105,40 +101,25 @@ const tagStyles = StyleSheet.create({
   },
 });
 
-type RaceTierBadgeType = 'grand-tour' | 'monument' | 'major-tour' | 'top-classic';
+type RaceTierBadgeType = RaceSubgroupKey;
 
 const RACE_TIER_BADGE_CONFIG: Record<
   RaceTierBadgeType,
-  { icon: MCIName; color: string; bg: string; border: string; label: string }
+  { icon: MCIName }
 > = {
-  'grand-tour':  { icon: 'crown',          color: '#FBBF24', bg: '#1C1408', border: '#4A3308', label: 'Grand Tour'  },
-  'monument':    { icon: 'trophy-outline', color: '#F7D774', bg: '#342A10', border: '#5B4716', label: 'Monument'    },
-  'major-tour':  { icon: 'flag-variant',   color: '#38BDF8', bg: '#071723', border: '#0E3A5A', label: 'Major Tour'  },
-  'top-classic': { icon: 'star-four-points-outline', color: '#C084FC', bg: '#150B27', border: '#4A1A8A', label: 'Top Classic' },
+  'grand-tour': { icon: 'crown' },
+  monument: { icon: 'trophy-outline' },
+  'major-tour': { icon: 'flag-variant' },
+  'top-classic': { icon: 'star-four-points-outline' },
 };
 
 const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType }> = ({ tier }) => {
-  const { icon, color, bg, border, label } = RACE_TIER_BADGE_CONFIG[tier];
+  const { icon } = RACE_TIER_BADGE_CONFIG[tier];
+  const colors = RACE_SUBGROUP_COLORS[tier];
   return (
-    <View style={[raceTierStyles.badge, { backgroundColor: bg, borderColor: border }]}>
-      <MaterialCommunityIcons name={icon} size={12} color={color} />
-      <Text style={[raceTierStyles.text, { color }]}>{label}</Text>
-    </View>
-  );
-};
-
-interface DurationBadgeProps {
-  format: string;
-  color: string;
-}
-
-const DurationBadge: React.FC<DurationBadgeProps> = ({ format, color }) => {
-  const { value, label } = parseRaceFormat(format);
-
-  return (
-    <View style={durationStyles.container}>
-      <Text style={[durationStyles.value, { color }]}>{value}</Text>
-      <Text style={[durationStyles.label, { color }]}>{label}</Text>
+    <View style={[raceTierStyles.badge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+      <MaterialCommunityIcons name={icon} size={12} color={colors.text} />
+      <Text style={[raceTierStyles.text, { color: colors.text }]}>{colors.label}</Text>
     </View>
   );
 };
@@ -162,41 +143,30 @@ const raceTierStyles = StyleSheet.create({
   },
 });
 
-const durationStyles = StyleSheet.create({
-  container: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  value: {
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  label: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    opacity: 0.9,
-    textTransform: 'uppercase',
-  },
-});
-
 // ─── MetadataChips ────────────────────────────────────────────────────────────
 
 interface MetadataChipsProps {
   startTime?: string | null;
   distance?: number;
   elevation?: number;
+  stageType?: StageTypeKey;
+  raceTier?: RaceTierBadgeType | null;
 }
 
-const MetadataChips: React.FC<MetadataChipsProps> = ({ startTime, distance, elevation }) => {
+const MetadataChips: React.FC<MetadataChipsProps> = ({
+  startTime,
+  distance,
+  elevation,
+  stageType,
+  raceTier,
+}) => {
   const chips: { icon: MCIName; text: string }[] = [];
   if (startTime) chips.push({ icon: 'clock-outline', text: startTime });
   if (distance && distance > 0) chips.push({ icon: 'road', text: `${distance} km` });
   if (elevation && elevation > 0) {
     chips.push({ icon: 'arrow-up', text: `${elevation.toLocaleString()} m` });
   }
-  if (chips.length === 0) return null;
+  if (chips.length === 0 && !stageType && !raceTier) return null;
 
   return (
     <View style={chipStyles.row}>
@@ -206,6 +176,8 @@ const MetadataChips: React.FC<MetadataChipsProps> = ({ startTime, distance, elev
           <Text style={chipStyles.text}>{chip.text}</Text>
         </View>
       ))}
+      {stageType ? <StageTypeTag type={stageType} /> : null}
+      {raceTier ? <RaceTierBadge tier={raceTier} /> : null}
     </View>
   );
 };
@@ -214,7 +186,7 @@ const chipStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   chip: {
     flexDirection: 'row',
@@ -222,10 +194,10 @@ const chipStyles = StyleSheet.create({
     backgroundColor: '#1D1D22',
     borderWidth: 1,
     borderColor: '#2A2A31',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
     borderRadius: 8,
-    gap: 4,
+    gap: 5,
   },
   text: {
     color: '#D1D5DB',
@@ -337,9 +309,9 @@ const progressStyles = StyleSheet.create({
 // ─── RaceItem ─────────────────────────────────────────────────────────────────
 
 const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalStages }) => {
-  const presentation = getRacePresentation(race.category);
-  const categoryColor = presentation.accentColor;
   const isOneDay = race.startDate === race.endDate;
+  const presentation = getRacePresentation(race.category);
+  const categoryColor = getCategoryAccentColor(race.category, isOneDay);
   const isRestDay = !isOneDay && currentStage === null;
   const hasActiveStage = !isOneDay && currentStage != null;
 
@@ -374,7 +346,6 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
       ? race.arrival || ''
       : '';
   const hasRoute = !!(departure || arrival);
-  const stageFormat = totalStages ? getRaceFormat(totalStages) : null;
 
   const renderSidebar = () => {
     if (isOneDay) {
@@ -410,7 +381,6 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
           {totalStages ? (
             <SidebarProgress current={progressCurrent} total={totalStages} color={categoryColor} />
           ) : null}
-          {stageFormat ? <DurationBadge format={stageFormat} color={categoryColor} /> : null}
         </View>
       );
     }
@@ -442,11 +412,9 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
                 {race.name}
               </Text>
             </View>
-            {stageType ? (
-              <View style={styles.stageTypeSlot}>
-                <StageTypeTag type={stageType} />
-              </View>
-            ) : null}
+            <View style={styles.categoryTagSlot}>
+              <CategoryTag label={presentation.label} color={categoryColor} />
+            </View>
           </View>
 
           {isRestDay ? (
@@ -471,15 +439,16 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
               )}
             </>
           )}
-          {raceTier ? (
-            <View style={styles.highlightRow}>
-              <RaceTierBadge tier={raceTier} />
-            </View>
-          ) : null}
         </View>
-        {!isRestDay && (startTime || distance || elevation) ? (
+        {!isRestDay && (startTime || distance || elevation || stageType || raceTier) ? (
           <View style={styles.metadataRow}>
-            <MetadataChips startTime={startTime} distance={distance} elevation={elevation} />
+            <MetadataChips
+              startTime={startTime}
+              distance={distance}
+              elevation={elevation}
+              stageType={stageType}
+              raceTier={raceTier}
+            />
           </View>
         ) : null}
       </View>
@@ -547,34 +516,35 @@ const styles = StyleSheet.create({
   sidebar: {
     width: SIDEBAR_WIDTH,
     borderRightWidth: 3,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 15,
     justifyContent: 'space-between',
-    minHeight: 118,
+    minHeight: 126,
   },
   topContent: {
-    gap: 8,
+    gap: 10,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 12,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 7,
+    gap: 8,
     flex: 1,
     minWidth: 0,
   },
-  stageTypeSlot: {
+  categoryTagSlot: {
     flexShrink: 0,
+    maxWidth: '45%',
   },
   flag: {
     fontSize: 16,
@@ -589,12 +559,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   routeBlock: {
-    gap: 6,
+    gap: 4,
   },
   routeLine: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
   },
   routeText: {
     fontSize: 12,
@@ -604,10 +574,12 @@ const styles = StyleSheet.create({
   routeLabel: {
     color: '#6B7280',
     fontSize: 10,
+    lineHeight: 14,
     fontWeight: '700',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    minWidth: 42,
+    width: 52,
+    paddingTop: 2,
   },
   routeDeparture: {
     color: '#A1A1AA',
@@ -616,13 +588,8 @@ const styles = StyleSheet.create({
     color: '#F4F4F5',
     fontWeight: '700',
   },
-  highlightRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-  },
   metadataRow: {
-    marginTop: 10,
+    marginTop: 12,
   },
   restText: {
     color: '#8B93A1',

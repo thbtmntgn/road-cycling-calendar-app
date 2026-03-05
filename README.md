@@ -31,7 +31,7 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 - The scraper generates `src/generated/pcsData.ts` locally — that file is ignored by Git and never committed
 - `npm run fetch-races` uses a rolling 2-month window centered on today
 - `npm run fetch-races-full` fetches the full season when you need a complete rebuild
-- Startlists are refreshed for completed races plus upcoming races within the next 7 days; stage details are still fetched for all multi-day races in the selected window
+- Startlists are refreshed for completed races plus upcoming races within the next 7 days; top one-day results are refreshed for races ending today or earlier; stage details plus per-stage top 10 snapshots (stage results + GC) are fetched for all multi-day races in the selected window
 - The scraper uses limited parallelism plus a local team-country cache at `scripts/.cache/team_country_cache.json`
 - Re-run `npm run fetch-races` whenever you want fresher data, then reload the app
 
@@ -39,4 +39,6 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 
 | | | |
 | --- | --- | --- |
-| ![Home](docs/home.png) | ![Home 1](docs/home1.png) | ![Startlist](docs/startlist.png) |
+| ![Main - No races](docs/screenshot-main-empty-day.png) | ![Main - Race day](docs/screenshot-main-race-day.png) | ![Detail - Startlist](docs/screenshot-detail-startlist.png) |
+| ![Main - One-day race](docs/screenshot-main-oneday-upcoming.png) | ![Detail - Results](docs/screenshot-detail-results.png) | ![Main - Stage races](docs/screenshot-main-stage-day.png) |
+| ![Detail - Classification](docs/screenshot-detail-classification.png) | | |

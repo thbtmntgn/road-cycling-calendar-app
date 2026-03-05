@@ -39,7 +39,7 @@ React Native + Expo app for tracking professional cycling races. Uses stack navi
 - Date pre-filtering happens in `fetch_race_slugs` by parsing the date from the races.php table (avoids HTTP requests for out-of-range races)
 - One-day race distance: `Stage(f"{slug}/result").distance()` — `Race.stages()` returns empty for one-day races
 - The default fetch uses a rolling window of 1 month before today through 1 month after today; `--full-season` disables that window
-- Startlists are refreshed for completed races plus upcoming races whose start date is within the next 7 days; stage pages are still fetched for all multi-day races in the selected window
+- Startlists are refreshed for completed races plus upcoming races whose start date is within the next 7 days; top one-day results are refreshed for races ending today or earlier; stage pages plus per-stage top 10 snapshots (stage results + GC) are fetched for all multi-day races in the selected window
 - The scraper uses limited race-level parallelism (`--workers`, default 4) and a persistent local cache at `scripts/.cache/team_country_cache.json` for team country lookups
 - The scraper always writes a single local runtime file
 - Developers should use the npm scripts, not `expo start` directly, so the local-data check always runs

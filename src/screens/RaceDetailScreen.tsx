@@ -5,6 +5,7 @@ import {
   Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,32 +15,53 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
-import { fetchStartlist } from '../api/racesApi';
-import { getRacePresentation, isMonumentRace } from '../constants/racePresentation';
-import { Gender, Race, StartlistTeam } from '../types';
-
-type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+import { getCategoryAccentColor } from '../constants/raceColors';
+import {
+  fetchGeneralStandings,
+  fetchKomStandings,
+  fetchPointsStandings,
+  fetchResults,
+  fetchStageResults,
+  fetchStartlist,
+  fetchStages,
+  fetchTeamsStandings,
+  fetchYouthStandings,
+} from '../api/racesApi';
+import RaceItem from '../components/RaceItem';
+import {
+  RaceKomStandingsByStage,
+  RacePointsStandingsByStage,
+  Race,
+  RaceGeneralStandingsByStage,
+  RaceResult,
+  RaceStageResultsByStage,
+  RaceTeamsStandingsByStage,
+  RaceYouthStandingsByStage,
+  Stage,
+  StartlistTeam,
+} from '../types';
 
 // Self-contained param list — works from both CalendarStack and FavoritesStack
-type RaceDetailParams = { RaceDetail: { race: Race } };
+type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
 
 interface RaceDetailScreenProps {
   navigation: NativeStackNavigationProp<RaceDetailParams, 'RaceDetail'>;
   route: RouteProp<RaceDetailParams, 'RaceDetail'>;
 }
 
-type StageTypeKey = 'flat' | 'hilly' | 'mountain' | 'tt';
+type DetailTab = 'classification' | 'results' | 'startlist';
+type ClassificationTab = 'gc' | 'points' | 'kom' | 'youth' | 'teams';
 
-const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; color: string; label: string }> = {
-  flat: { icon: 'minus', color: '#4ADE80', label: 'Flat' },
-  hilly: { icon: 'chart-bell-curve', color: '#FACC15', label: 'Hilly' },
-  mountain: { icon: 'image-filter-hdr', color: '#F87171', label: 'Mountain' },
-  tt: { icon: 'timer-outline', color: '#A78BFA', label: 'Time Trial' },
-};
+const CLASSIFICATION_TABS: { key: ClassificationTab; label: string }[] = [
+  { key: 'gc', label: 'GC' },
+  { key: 'points', label: 'Points' },
+  { key: 'kom', label: 'KOM' },
+  { key: 'youth', label: 'Youth' },
+  { key: 'teams', label: 'Teams' },
+];
 
-const SUMMARY_SIDEBAR_WIDTH = 64;
 const TEAM_SIDEBAR_WIDTH = 72;
 const SCREEN_PADDING = 16;
 
@@ -55,116 +77,15 @@ const getCountryFlag = (code?: string | null): string | null => {
     .join('');
 };
 
-const getRaceFormat = (dayCount: number): string => {
-  if (dayCount <= 4) {
-    return `${dayCount} days`;
-  }
-  if (dayCount <= 8) {
-    return '1 week';
-  }
-  if (dayCount <= 14) {
-    return '2 weeks';
-  }
-  return '3 weeks';
+const formatStageLabel = (stageNumber: number): string => {
+  return stageNumber === 0 ? 'prologue' : `stage ${stageNumber}`;
 };
 
-const parseDuration = (value: string): { primary: string; secondary: string } => {
-  const [primary, ...rest] = value.split(' ');
-  return {
-    primary,
-    secondary: rest.join(' '),
-  };
-};
-
-interface StageTypeTagProps {
-  type: StageTypeKey;
-}
-
-const StageTypeTag: React.FC<StageTypeTagProps> = ({ type }) => {
-  const config = STAGE_TYPE_CONFIG[type];
-  if (!config) {
-    return null;
+const compareStageOrder = (left: Stage, right: Stage): number => {
+  if (left.date !== right.date) {
+    return left.date.localeCompare(right.date);
   }
-
-  return (
-    <View
-      style={[
-        sharedStyles.badge,
-        {
-          backgroundColor: `${config.color}14`,
-          borderColor: `${config.color}35`,
-        },
-      ]}
-    >
-      <MaterialCommunityIcons name={config.icon} size={12} color={config.color} />
-      <Text style={[sharedStyles.badgeText, { color: config.color }]}>{config.label}</Text>
-    </View>
-  );
-};
-
-const MonumentBadge: React.FC = () => (
-  <View
-    style={[
-      sharedStyles.badge,
-      {
-        backgroundColor: '#342A10',
-        borderColor: '#5B4716',
-      },
-    ]}
-  >
-    <MaterialCommunityIcons name="trophy-outline" size={12} color="#F7D774" />
-    <Text style={[sharedStyles.badgeText, { color: '#F7D774' }]}>Monument</Text>
-  </View>
-);
-
-interface MetadataChipsProps {
-  startTime?: string | null;
-  distance?: number;
-  elevation?: number;
-}
-
-const MetadataChips: React.FC<MetadataChipsProps> = ({ startTime, distance, elevation }) => {
-  const chips: { icon: MCIName; label: string }[] = [];
-
-  if (startTime) {
-    chips.push({ icon: 'clock-outline', label: startTime });
-  }
-  if (distance && distance > 0) {
-    chips.push({ icon: 'road', label: `${distance} km` });
-  }
-  if (elevation && elevation > 0) {
-    chips.push({ icon: 'arrow-up', label: `${elevation.toLocaleString()} m` });
-  }
-  if (chips.length === 0) {
-    return null;
-  }
-
-  return (
-    <View style={sharedStyles.chipsRow}>
-      {chips.map((chip) => (
-        <View key={`${chip.icon}-${chip.label}`} style={sharedStyles.chip}>
-          <MaterialCommunityIcons name={chip.icon} size={11} color="#8B93A1" />
-          <Text style={sharedStyles.chipText}>{chip.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
-};
-
-interface DurationBlockProps {
-  label: string;
-  color: string;
-}
-
-const DurationBlock: React.FC<DurationBlockProps> = ({ label, color }) => {
-  const { primary, secondary } = parseDuration(label);
-
-  return (
-    <View style={sharedStyles.durationBlock}>
-      <Text style={[sharedStyles.durationValue, { color }]}>{primary}</Text>
-      <Text style={[sharedStyles.durationLabel, { color }]}>{secondary}</Text>
-    </View>
-  );
+  return left.stageNumber - right.stageNumber;
 };
 
 interface TeamJerseyProps {
@@ -192,115 +113,132 @@ const TeamJersey: React.FC<TeamJerseyProps> = ({ uri }) => {
   );
 };
 
-interface RaceSummaryTileProps {
-  race: Race;
-}
-
-const RaceSummaryTile: React.FC<RaceSummaryTileProps> = ({ race }) => {
-  const presentation = getRacePresentation(race.category);
-  const accentColor = presentation.accentColor;
-  const isOneDay = race.startDate === race.endDate;
-  const totalDays = dayjs(race.endDate).diff(dayjs(race.startDate), 'day') + 1;
-  const stageType = race.stageType as StageTypeKey | undefined;
-  const isMonument = isOneDay && race.gender === Gender.Men && isMonumentRace(race);
-  const raceFlag = getCountryFlag(race.country);
-  const departure = isOneDay ? (race.departure || '') : '';
-  const arrival = isOneDay ? (race.arrival || '') : '';
-  const hasRoute = !!(departure || arrival);
-
-  return (
-    <View style={styles.summaryCard}>
-      <View
-        style={[
-          styles.summarySidebar,
-          {
-            backgroundColor: `${accentColor}18`,
-            borderRightColor: accentColor,
-          },
-        ]}
-      >
-        {isOneDay ? (
-          <View style={styles.centered}>
-            <Text style={[styles.summaryDayValue, { color: accentColor }]}>1</Text>
-            <Text style={[styles.summaryDayLabel, { color: accentColor }]}>Day</Text>
-          </View>
-        ) : (
-          <DurationBlock label={getRaceFormat(totalDays)} color={accentColor} />
-        )}
-      </View>
-
-      <View style={styles.summaryContent}>
-        <View style={styles.summaryHeaderRow}>
-          <View style={styles.summaryNameRow}>
-            {raceFlag ? <Text style={styles.summaryFlag}>{raceFlag}</Text> : null}
-            <Text style={styles.summaryName}>{race.name}</Text>
-          </View>
-          <View style={styles.summaryTagColumn}>
-            {stageType ? <StageTypeTag type={stageType} /> : null}
-          </View>
-        </View>
-
-        {hasRoute ? (
-          <View style={styles.summaryRouteBlock}>
-            {departure ? (
-              <View style={styles.summaryRouteLine}>
-                <Text style={styles.summaryRouteLabel}>Start</Text>
-                <Text style={[styles.summaryRouteText, styles.summaryRouteDeparture]}>{departure}</Text>
-              </View>
-            ) : null}
-            {arrival ? (
-              <View style={styles.summaryRouteLine}>
-                <Text style={styles.summaryRouteLabel}>Finish</Text>
-                <Text style={[styles.summaryRouteText, styles.summaryRouteArrival]}>{arrival}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-        {isMonument ? (
-          <View style={styles.summarySecondaryRow}>
-            <MonumentBadge />
-          </View>
-        ) : null}
-        <MetadataChips
-          startTime={race.startTime && race.startTime !== '-' ? race.startTime : null}
-          distance={race.distance}
-          elevation={race.elevation}
-        />
-      </View>
-    </View>
-  );
-};
-
 const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }) => {
-  const { race } = route.params;
+  const { race, selectedDate: selectedDateParam } = route.params;
+  const selectedDate = selectedDateParam ?? dayjs().format('YYYY-MM-DD');
   const { width } = useWindowDimensions();
   const pagerWidth = Math.max(1, width - SCREEN_PADDING * 2);
+  const isStageRace = race.startDate !== race.endDate;
   const [startlist, setStartlist] = useState<StartlistTeam[]>([]);
+  const [results, setResults] = useState<RaceResult[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [gcStandingsByStage, setGcStandingsByStage] = useState<RaceGeneralStandingsByStage>({});
+  const [stageResultsByStage, setStageResultsByStage] = useState<RaceStageResultsByStage>({});
+  const [pointsStandingsByStage, setPointsStandingsByStage] = useState<RacePointsStandingsByStage>({});
+  const [komStandingsByStage, setKomStandingsByStage] = useState<RaceKomStandingsByStage>({});
+  const [youthStandingsByStage, setYouthStandingsByStage] = useState<RaceYouthStandingsByStage>({});
+  const [teamsStandingsByStage, setTeamsStandingsByStage] = useState<RaceTeamsStandingsByStage>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
-  const categoryColor = getRacePresentation(race.category).accentColor;
+  const [activeTab, setActiveTab] = useState<DetailTab>('startlist');
+  const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
+  const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
+  const sortedStages = [...stages].sort(compareStageOrder);
+  const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === selectedDate);
+  const stageOnSelectedDate =
+    stagesOnSelectedDate.length > 0 ? stagesOnSelectedDate[stagesOnSelectedDate.length - 1] : null;
+  const stageNumberOnSelectedDate = stageOnSelectedDate?.stageNumber ?? null;
+  const stageKey = stageNumberOnSelectedDate !== null ? String(stageNumberOnSelectedDate) : null;
+  const generalStandingRows = isStageRace && stageKey ? gcStandingsByStage[stageKey] ?? [] : [];
+  const pointsStandingRows = isStageRace && stageKey ? pointsStandingsByStage[stageKey] ?? [] : [];
+  const komStandingRows = isStageRace && stageKey ? komStandingsByStage[stageKey] ?? [] : [];
+  const youthStandingRows = isStageRace && stageKey ? youthStandingsByStage[stageKey] ?? [] : [];
+  const teamsStandingRows = isStageRace && stageKey ? teamsStandingsByStage[stageKey] ?? [] : [];
+  const classificationRowsByTab: Record<ClassificationTab, RaceResult[]> = {
+    gc: generalStandingRows,
+    points: pointsStandingRows,
+    kom: komStandingRows,
+    youth: youthStandingRows,
+    teams: teamsStandingRows,
+  };
+  const activeClassificationRows = classificationRowsByTab[activeClassificationTab];
+  const stageResultRows =
+    isStageRace && stageNumberOnSelectedDate !== null
+      ? stageResultsByStage[String(stageNumberOnSelectedDate)] ?? []
+      : [];
+  const canShowResults = isStageRace || results.length > 0;
+  const canShowGeneralStandings = isStageRace;
+  const availableTabs: DetailTab[] = [];
+  if (canShowResults) {
+    availableTabs.push('results');
+  }
+  if (canShowGeneralStandings) {
+    availableTabs.push('classification');
+  }
+  availableTabs.push('startlist');
 
   useEffect(() => {
     navigation.setOptions({ title: race.name });
-    loadStartlist();
+    loadRaceData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadStartlist = async () => {
+  const loadRaceData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchStartlist(race.id);
-      setStartlist(data);
+      const [
+        startlistData,
+        resultData,
+        stagesData,
+        gcStandingsData,
+        stageResultsData,
+        pointsStandingsData,
+        komStandingsData,
+        youthStandingsData,
+        teamsStandingsData,
+      ] =
+        await Promise.all([
+          fetchStartlist(race.id),
+          fetchResults(race.id),
+          isStageRace ? fetchStages(race.id) : Promise.resolve<Stage[]>([]),
+          isStageRace
+            ? fetchGeneralStandings(race.id)
+            : Promise.resolve<RaceGeneralStandingsByStage>({}),
+          isStageRace ? fetchStageResults(race.id) : Promise.resolve<RaceStageResultsByStage>({}),
+          isStageRace
+            ? fetchPointsStandings(race.id)
+            : Promise.resolve<RacePointsStandingsByStage>({}),
+          isStageRace ? fetchKomStandings(race.id) : Promise.resolve<RaceKomStandingsByStage>({}),
+          isStageRace
+            ? fetchYouthStandings(race.id)
+            : Promise.resolve<RaceYouthStandingsByStage>({}),
+          isStageRace
+            ? fetchTeamsStandings(race.id)
+            : Promise.resolve<RaceTeamsStandingsByStage>({}),
+        ]);
+      setStartlist(startlistData);
+      setResults(resultData);
+      setStages(stagesData);
+      setGcStandingsByStage(gcStandingsData);
+      setStageResultsByStage(stageResultsData);
+      setPointsStandingsByStage(pointsStandingsData);
+      setKomStandingsByStage(komStandingsData);
+      setYouthStandingsByStage(youthStandingsData);
+      setTeamsStandingsByStage(teamsStandingsData);
       setCurrentTeamIndex(0);
-    } catch (err: unknown) {
-      const axiosError = err as { response?: { status: number } };
-      setCurrentTeamIndex(0);
-      if (axiosError?.response?.status === 404) {
-        setStartlist([]);
+      setActiveClassificationTab('gc');
+      if (isStageRace) {
+        setActiveTab('results');
+      } else if (resultData.length > 0) {
+        setActiveTab('results');
       } else {
-        setError('Failed to load startlist');
+        setActiveTab('startlist');
       }
+    } catch {
+      setStartlist([]);
+      setResults([]);
+      setStages([]);
+      setGcStandingsByStage({});
+      setStageResultsByStage({});
+      setPointsStandingsByStage({});
+      setKomStandingsByStage({});
+      setYouthStandingsByStage({});
+      setTeamsStandingsByStage({});
+      setCurrentTeamIndex(0);
+      setActiveClassificationTab('gc');
+      setActiveTab('startlist');
+      setError('Failed to load race details');
     } finally {
       setLoading(false);
     }
@@ -344,7 +282,12 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
               </Text>
             </View>
 
-            <View style={styles.teamContent}>
+            <ScrollView
+              style={styles.teamContentScroll}
+              contentContainerStyle={styles.teamContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
               <View style={styles.teamNameRow}>
                 {teamFlag ? <Text style={styles.teamFlag}>{teamFlag}</Text> : null}
                 <Text style={styles.teamName}>{item.teamName}</Text>
@@ -373,25 +316,267 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                 })}
               </View>
               <TeamJersey uri={item.jerseyImageUrl} />
-            </View>
+            </ScrollView>
           </View>
         </View>
       </View>
     );
   };
 
+  const renderClassificationRow = (item: RaceResult, index: number, totalRows: number) => {
+    const riderFlag = getCountryFlag(item.nationality);
+    const trailingLabel = item.time || item.status;
+
+    return (
+      <View
+        style={[
+          styles.resultRow,
+          index === 0 ? styles.resultRowFirst : null,
+          index === totalRows - 1 ? styles.resultRowLast : null,
+        ]}
+      >
+        <View
+          style={[
+            styles.resultRankBadge,
+            {
+              backgroundColor: `${categoryColor}18`,
+              borderColor: `${categoryColor}35`,
+            },
+          ]}
+        >
+          <Text style={[styles.resultRankText, { color: categoryColor }]}>{item.rankLabel}</Text>
+        </View>
+
+        <View style={styles.resultIdentity}>
+          <View style={styles.resultNameRow}>
+            {riderFlag ? <Text style={styles.resultFlag}>{riderFlag}</Text> : null}
+            <Text style={styles.resultName}>{item.riderName}</Text>
+          </View>
+          {item.teamName ? <Text style={styles.resultTeam}>{item.teamName}</Text> : null}
+        </View>
+
+        {trailingLabel ? <Text style={styles.resultTime}>{trailingLabel}</Text> : null}
+      </View>
+    );
+  };
+
+  const renderResultRow = ({
+    item,
+    index,
+  }: {
+    item: RaceResult;
+    index: number;
+  }) => renderClassificationRow(item, index, isStageRace ? stageResultRows.length : results.length);
+
+  const renderResults = () => {
+    const resultRows = isStageRace ? stageResultRows : results;
+    let emptyMessage = 'Results not available yet';
+    if (isStageRace) {
+      emptyMessage = stageOnSelectedDate
+        ? 'Stage results not available yet'
+        : 'No stage scheduled on this date';
+    }
+
+    if (resultRows.length === 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="ribbon-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>{emptyMessage}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={resultRows}
+        keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
+        renderItem={renderResultRow}
+        style={styles.resultsList}
+        contentContainerStyle={styles.resultsListContent}
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  };
+
+  const renderClassificationStandingRow = ({
+    item,
+    index,
+  }: {
+    item: RaceResult;
+    index: number;
+  }) => renderClassificationRow(item, index, activeClassificationRows.length);
+
+  const activeClassificationLabel =
+    CLASSIFICATION_TABS.find((tab) => tab.key === activeClassificationTab)?.label ?? 'Classification';
+
+  const renderClassificationStandings = () => {
+    if (!stageOnSelectedDate) {
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="podium-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>No stage scheduled on this date</Text>
+        </View>
+      );
+    }
+
+    if (activeClassificationRows.length === 0) {
+      let emptyMessage = `${activeClassificationLabel} classification not available yet`;
+      if (activeClassificationTab === 'gc') {
+        emptyMessage =
+          stageOnSelectedDate.stageNumber === 1 ? 'GC will appear after stage 1' : 'GC not available yet';
+      }
+
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="podium-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>{emptyMessage}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={activeClassificationRows}
+        keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
+        renderItem={renderClassificationStandingRow}
+        style={styles.resultsList}
+        contentContainerStyle={styles.resultsListContent}
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  };
+
+  const renderStartlist = () => {
+    if (startlist.length === 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="time-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>Startlist not yet published</Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={startlist}
+        horizontal
+        pagingEnabled
+        decelerationRate="fast"
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item, index) => `${item.teamName}-${index}`}
+        renderItem={renderTeamPage}
+        onMomentumScrollEnd={handlePagerScrollEnd}
+        style={styles.teamPager}
+        scrollEnabled={startlist.length > 1}
+      />
+    );
+  };
+
+  const activeTabTitle =
+    activeTab === 'classification'
+      ? 'Classification'
+      : activeTab === 'results'
+        ? 'Results'
+        : 'Startlist';
+
+  let activeTabMeta: string | null = null;
+  if (activeTab === 'classification') {
+    if (activeClassificationRows.length > 0) {
+      activeTabMeta = `${activeClassificationLabel} · Top ${activeClassificationRows.length}`;
+      if (stageOnSelectedDate) {
+        activeTabMeta += ` · After ${formatStageLabel(stageOnSelectedDate.stageNumber)}`;
+      }
+    } else {
+      activeTabMeta = activeClassificationLabel;
+    }
+  } else if (activeTab === 'results') {
+    if (isStageRace) {
+      if (stageResultRows.length > 0) {
+        activeTabMeta = `Top ${stageResultRows.length}`;
+        if (stageOnSelectedDate) {
+          activeTabMeta += ` · ${formatStageLabel(stageOnSelectedDate.stageNumber)}`;
+        }
+      }
+    } else {
+      activeTabMeta = results.length > 0 ? `Top ${results.length}` : null;
+    }
+  } else if (startlist.length > 0) {
+    activeTabMeta = `${currentTeamIndex + 1} / ${startlist.length}`;
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={styles.container}>
-        <RaceSummaryTile race={race} />
+        <RaceItem
+          race={race}
+          currentStage={stageOnSelectedDate}
+          totalStages={sortedStages.length || undefined}
+        />
+
+        {availableTabs.length > 1 ? (
+          <View style={styles.tabSwitcher}>
+            {availableTabs.map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                style={[
+                  styles.tabButton,
+                  activeTab === tab ? styles.tabButtonActive : null,
+                ]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.85}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.tabButtonText,
+                    activeTab === tab ? styles.tabButtonTextActive : null,
+                  ]}
+                >
+                  {tab === 'classification'
+                    ? 'Classification'
+                    : tab === 'results'
+                      ? 'Results'
+                      : 'Startlist'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
+        {activeTab === 'classification' ? (
+          <View style={styles.classificationSubtabsWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.classificationSubtabs}
+            >
+              {CLASSIFICATION_TABS.map((tab) => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[
+                    styles.classificationSubtab,
+                    activeClassificationTab === tab.key ? styles.classificationSubtabActive : null,
+                  ]}
+                  onPress={() => setActiveClassificationTab(tab.key)}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.classificationSubtabText,
+                      activeClassificationTab === tab.key ? styles.classificationSubtabTextActive : null,
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         <View style={styles.startlistHeader}>
-          <Text style={styles.startlistTitle}>Startlist</Text>
-          {startlist.length > 0 ? (
-            <Text style={styles.startlistCount}>
-              {currentTeamIndex + 1} / {startlist.length}
-            </Text>
-          ) : null}
+          <Text style={styles.startlistTitle}>{activeTabTitle}</Text>
+          {activeTabMeta ? <Text style={styles.startlistCount}>{activeTabMeta}</Text> : null}
         </View>
 
         {loading ? (
@@ -402,88 +587,21 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           <View style={styles.centerContainer}>
             <Ionicons name="warning-outline" size={40} color="#FF6B6B" />
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadStartlist}>
+            <TouchableOpacity style={styles.retryButton} onPress={loadRaceData}>
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
-        ) : startlist.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Ionicons name="time-outline" size={40} color="#555555" />
-            <Text style={styles.emptyText}>Startlist not yet published</Text>
-          </View>
         ) : (
-          <FlatList
-            data={startlist}
-            horizontal
-            pagingEnabled
-            decelerationRate="fast"
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item, index) => `${item.teamName}-${index}`}
-            renderItem={renderTeamPage}
-            onMomentumScrollEnd={handlePagerScrollEnd}
-            style={styles.teamPager}
-            scrollEnabled={startlist.length > 1}
-          />
+          activeTab === 'classification'
+            ? renderClassificationStandings()
+            : activeTab === 'results'
+              ? renderResults()
+              : renderStartlist()
         )}
       </View>
     </SafeAreaView>
   );
 };
-
-const sharedStyles = StyleSheet.create({
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 5,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1D1D22',
-    borderWidth: 1,
-    borderColor: '#2A2A31',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    gap: 4,
-  },
-  chipText: {
-    color: '#D1D5DB',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  durationBlock: {
-    alignItems: 'center',
-  },
-  durationValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  durationLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    opacity: 0.9,
-    textTransform: 'uppercase',
-  },
-});
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -497,105 +615,65 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryCard: {
+  tabSwitcher: {
     flexDirection: 'row',
-    backgroundColor: '#171920',
-    borderRadius: 18,
+    backgroundColor: '#12141A',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#252833',
-    overflow: 'hidden',
+    padding: 4,
+    marginTop: 18,
   },
-  summarySidebar: {
-    width: SUMMARY_SIDEBAR_WIDTH,
-    borderRightWidth: 3,
-    paddingVertical: 16,
+  tabButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  summaryDayValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 20,
+  tabButtonActive: {
+    backgroundColor: '#1D1D22',
   },
-  summaryDayLabel: {
-    fontSize: 9,
+  tabButtonText: {
+    color: '#8B93A1',
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    opacity: 0.9,
+    letterSpacing: 0.2,
   },
-  summaryContent: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    gap: 10,
-  },
-  summaryHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  summaryNameRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-    flex: 1,
-    minWidth: 0,
-  },
-  summaryTagColumn: {
-    flexShrink: 0,
-  },
-  summaryFlag: {
-    fontSize: 16,
-    lineHeight: 18,
-  },
-  summaryName: {
-    flex: 1,
+  tabButtonTextActive: {
     color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
-    lineHeight: 22,
-    letterSpacing: -0.2,
   },
-  summarySecondaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  classificationSubtabsWrap: {
+    marginTop: 10,
+  },
+  classificationSubtabs: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  summaryRouteBlock: {
-    gap: 6,
-  },
-  summaryRouteLine: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 8,
+    paddingHorizontal: 2,
   },
-  summaryRouteLabel: {
-    color: '#6B7280',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    paddingTop: 2,
-    minWidth: 42,
+  classificationSubtab: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A2A31',
+    backgroundColor: '#12141A',
   },
-  summaryRouteText: {
-    flex: 1,
+  classificationSubtabActive: {
+    borderColor: '#393D4A',
+    backgroundColor: '#1D1D22',
+  },
+  classificationSubtabText: {
+    color: '#8B93A1',
     fontSize: 12,
-    lineHeight: 17,
-  },
-  summaryRouteDeparture: {
-    color: '#A1A1AA',
-  },
-  summaryRouteArrival: {
-    color: '#F4F4F5',
     fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  classificationSubtabTextActive: {
+    color: '#FFFFFF',
   },
   startlistHeader: {
     flexDirection: 'row',
@@ -649,6 +727,81 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
   },
+  resultsList: {
+    flex: 1,
+  },
+  resultsListContent: {
+    paddingBottom: 12,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#171920',
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#252833',
+  },
+  resultRowFirst: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  resultRowLast: {
+    borderBottomWidth: 1,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+  },
+  resultRankBadge: {
+    minWidth: 42,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultRankText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  resultIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  resultNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  resultFlag: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  resultName: {
+    flex: 1,
+    color: '#F4F4F5',
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  resultTeam: {
+    color: '#8B93A1',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  resultTime: {
+    maxWidth: 88,
+    color: '#D1D5DB',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    textAlign: 'right',
+  },
   teamPager: {
     flex: 1,
   },
@@ -689,10 +842,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.2,
   },
-  teamContent: {
+  teamContentScroll: {
     flex: 1,
+  },
+  teamContent: {
+    flexGrow: 1,
     paddingVertical: 16,
     paddingHorizontal: 16,
+    paddingBottom: 20,
   },
   teamNameRow: {
     flexDirection: 'row',
@@ -718,7 +875,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   ridersList: {
-    gap: 10,
+    gap: 6,
   },
   teamJerseySection: {
     marginTop: 16,

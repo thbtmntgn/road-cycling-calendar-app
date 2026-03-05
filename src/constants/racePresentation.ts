@@ -65,8 +65,8 @@ const buildPresentation = (
 });
 
 export const CATEGORY_PRESENTATION: Record<RaceCategory, RacePresentation> = {
-  [RaceCategory.WorldTour]: buildPresentation('WorldTour', 1, 1, '#E63946'),
-  [RaceCategory.WomenWorldTour]: buildPresentation('Women WorldTour', 2, 1, '#FF6B9D'),
+  [RaceCategory.WorldTour]: buildPresentation('WorldTour', 1, 1, '#DC2626'),
+  [RaceCategory.WomenWorldTour]: buildPresentation('Women WorldTour', 2, 1, '#EC4899'),
   [RaceCategory.WorldChampionship]: buildPresentation('World Championship', 3, 1, '#F97316'),
   [RaceCategory.WomenWorldChampionship]: buildPresentation(
     'Women World Championship',
@@ -74,24 +74,24 @@ export const CATEGORY_PRESENTATION: Record<RaceCategory, RacePresentation> = {
     1,
     '#FB7185'
   ),
-  [RaceCategory.ProSeries]: buildPresentation('ProSeries', 5, 2, '#4EA8DE'),
-  [RaceCategory.WomenProSeries]: buildPresentation('Women ProSeries', 6, 2, '#A78BFA'),
+  [RaceCategory.ProSeries]: buildPresentation('ProSeries', 5, 2, '#3C9FD0'),
+  [RaceCategory.WomenProSeries]: buildPresentation('Women ProSeries', 6, 2, '#9A7CF6'),
   [RaceCategory.NationalChampionship]: buildPresentation(
     'National Championship',
     7,
     2,
-    '#94A3B8'
+    '#8A98AB'
   ),
   [RaceCategory.WomenNationalChampionship]: buildPresentation(
     'Women National Championship',
     8,
     2,
-    '#CBD5E1'
+    '#BEC8D8'
   ),
   [RaceCategory.Continental]: buildPresentation('Continental', 9, 3, '#F4A261'),
 };
 
-const DEFAULT_PRESENTATION = buildPresentation('Race', 99, 3, '#7C8B9B');
+const DEFAULT_PRESENTATION = buildPresentation('Race', 99, 3, '#738497');
 
 export const getRacePresentation = (category: RaceCategory | string): RacePresentation =>
   CATEGORY_PRESENTATION[category as RaceCategory] ?? DEFAULT_PRESENTATION;

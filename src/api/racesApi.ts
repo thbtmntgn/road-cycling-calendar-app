@@ -1,10 +1,30 @@
-import { ApiResponse, Race, Gender, StartlistTeam, Stage } from '../types';
+import {
+  ApiResponse,
+  Race,
+  Gender,
+  RaceGeneralStandingsByStage,
+  RaceKomStandingsByStage,
+  RacePointsStandingsByStage,
+  RaceResult,
+  RaceStageResultsByStage,
+  RaceTeamsStandingsByStage,
+  RaceYouthStandingsByStage,
+  StartlistTeam,
+  Stage,
+} from '../types';
 import pcsData from '../generated/pcsData';
 
 const localData = pcsData as {
   races: Race[];
   startlists: Record<string, StartlistTeam[]>;
   stages: Record<string, Stage[]>;
+  results?: Record<string, RaceResult[]>;
+  gcStandings?: Record<string, RaceGeneralStandingsByStage>;
+  stageResults?: Record<string, RaceStageResultsByStage>;
+  pointsStandings?: Record<string, RacePointsStandingsByStage>;
+  komStandings?: Record<string, RaceKomStandingsByStage>;
+  youthStandings?: Record<string, RaceYouthStandingsByStage>;
+  teamsStandings?: Record<string, RaceTeamsStandingsByStage>;
 };
 
 export const fetchRaces = async (): Promise<ApiResponse> => {
@@ -17,6 +37,46 @@ export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> =
 
 export const fetchStages = async (raceId: string): Promise<Stage[]> => {
   return localData.stages[raceId] ?? [];
+};
+
+export const fetchResults = async (raceId: string): Promise<RaceResult[]> => {
+  return localData.results?.[raceId] ?? [];
+};
+
+export const fetchGeneralStandings = async (
+  raceId: string
+): Promise<RaceGeneralStandingsByStage> => {
+  return localData.gcStandings?.[raceId] ?? {};
+};
+
+export const fetchStageResults = async (
+  raceId: string
+): Promise<RaceStageResultsByStage> => {
+  return localData.stageResults?.[raceId] ?? {};
+};
+
+export const fetchPointsStandings = async (
+  raceId: string
+): Promise<RacePointsStandingsByStage> => {
+  return localData.pointsStandings?.[raceId] ?? {};
+};
+
+export const fetchKomStandings = async (
+  raceId: string
+): Promise<RaceKomStandingsByStage> => {
+  return localData.komStandings?.[raceId] ?? {};
+};
+
+export const fetchYouthStandings = async (
+  raceId: string
+): Promise<RaceYouthStandingsByStage> => {
+  return localData.youthStandings?.[raceId] ?? {};
+};
+
+export const fetchTeamsStandings = async (
+  raceId: string
+): Promise<RaceTeamsStandingsByStage> => {
+  return localData.teamsStandings?.[raceId] ?? {};
 };
 
 // Filter races by gender

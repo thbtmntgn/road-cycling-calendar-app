@@ -72,3 +72,44 @@ export interface StartlistTeam {
   jerseyImageUrl?: string;
   riders: Rider[];
 }
+
+// Final results for completed races (top rows only)
+export interface RaceResult {
+  rankLabel: string;
+  riderName: string;
+  pcsSlug?: string;
+  nationality?: string; // ISO 3166-1 alpha-2
+  teamName?: string;
+  time?: string;
+  status?: string;
+}
+
+// Stage-race general classification snapshots keyed by stage number ("1", "2", ...)
+export interface RaceGeneralStandingsByStage {
+  [stageNumber: string]: RaceResult[];
+}
+
+// Stage-race stage result snapshots keyed by stage number ("1", "2", ...)
+export interface RaceStageResultsByStage {
+  [stageNumber: string]: RaceResult[];
+}
+
+// Stage-race points classification snapshots keyed by stage number ("1", "2", ...)
+export interface RacePointsStandingsByStage {
+  [stageNumber: string]: RaceResult[];
+}
+
+// Stage-race KOM classification snapshots keyed by stage number ("1", "2", ...)
+export interface RaceKomStandingsByStage {
+  [stageNumber: string]: RaceResult[];
+}
+
+// Stage-race youth classification snapshots keyed by stage number ("1", "2", ...)
+export interface RaceYouthStandingsByStage {
+  [stageNumber: string]: RaceResult[];
+}
+
+// Stage-race team classification snapshots keyed by stage number ("1", "2", ...)
+export interface RaceTeamsStandingsByStage {
+  [stageNumber: string]: RaceResult[];
+}

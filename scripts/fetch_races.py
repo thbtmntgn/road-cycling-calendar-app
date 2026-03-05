@@ -65,6 +65,7 @@ WWT_CATEGORIES = {"1.WWT", "2.WWT"}
 
 GENERATED_PATH = Path(__file__).parent.parent / "src" / "generated" / "pcsData.ts"
 TEAM_COUNTRY_CACHE_PATH = Path(__file__).parent / ".cache" / "team_country_cache.json"
+MAX_RESULT_ROWS = 10
 _thread_local = threading.local()
 _CACHE_MISS = object()
 
@@ -239,6 +240,22 @@ def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[st
     elif icon in ("p4", "p5"):
         return "mountain"
     return None
+
+
+def parse_stage_number(stage_url: str) -> Optional[int]:
+    """
+    Parse stage number from a stage URL path.
+    "stage-3" -> 3, "prologue" -> 0.
+    """
+    last_segment = stage_url.rstrip("/").split("/")[-1]
+    if last_segment == "prologue":
+        return 0
+
+    parts = last_segment.split("-")
+    try:
+        return int(parts[-1])
+    except (ValueError, IndexError):
+        return None
 
 
 def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional[dict]:
@@ -430,48 +447,61 @@ def fetch_stages(
     start_date: str,
     end_date: str,
     delay: float = 0.0,
-) -> Optional[list]:
+) -> tuple[
+    Optional[list],
+    Optional[dict],
+    Optional[dict],
+    Optional[dict],
+    Optional[dict],
+    Optional[dict],
+    Optional[dict],
+]:
     """
     Fetch stage list for a multi-day race using procyclingstats.
-    Returns None for one-day races (start_date == end_date) or on error.
+    Returns (None, ..., None) for one-day races (start_date == end_date) or on error.
 
     Uses Race.stages() to get all stage URLs + dates, then fetches each
     Stage individually for departure, arrival, distance, and start_time.
+    Also captures per-stage top 10 snapshots for:
+      - stage results
+      - GC
+      - points
+      - KOM
+      - youth
+      - teams
     stage_url last segment: "stage-1" → stageNumber 1, "prologue" → 0.
     """
     from procyclingstats import Stage as PCSStage
 
     if start_date == end_date:
-        return None  # one-day race, no stages
+        return None, None, None, None, None, None, None  # one-day race, no stages
 
     try:
         race = Race(pcs_slug)
         raw_stages = race.stages()
     except Exception as exc:
         print(f"  ! No stages for {pcs_slug}: {exc}")
-        return None
+        return None, None, None, None, None, None, None
 
     if not raw_stages:
-        return None
+        return None, None, None, None, None, None, None
 
     # PCS returns dates as "MM-DD"; we need "YYYY-MM-DD".
     # Extract year from start_date (format "YYYY-MM-DD").
     year = start_date.split("-")[0] if start_date else ""
 
     result = []
+    gc_snapshots: dict[str, list] = {}
+    stage_result_snapshots: dict[str, list] = {}
+    points_snapshots: dict[str, list] = {}
+    kom_snapshots: dict[str, list] = {}
+    youth_snapshots: dict[str, list] = {}
+    teams_snapshots: dict[str, list] = {}
     for s in raw_stages:
         stage_url = s.get("stage_url", "")
-        last_segment = stage_url.rstrip("/").split("/")[-1]  # e.g. "stage-1" or "prologue"
-
-        if last_segment == "prologue":
-            stage_number = 0
-        else:
-            # "stage-3" → 3
-            parts = last_segment.split("-")
-            try:
-                stage_number = int(parts[-1])
-            except (ValueError, IndexError):
-                continue  # skip unparseable entries
+        stage_number = parse_stage_number(stage_url)
+        if stage_number is None:
+            continue  # skip unparseable entries
 
         raw_date = s.get("date", "")
         # Normalize "MM-DD" → "YYYY-MM-DD"; leave "YYYY-MM-DD" untouched
@@ -499,6 +529,115 @@ def fetch_stages(
                     detail.profile_icon() or "",
                 )
                 elevation = detail.vertical_meters() or 0
+
+                try:
+                    stage_rows = detail.results(
+                        "rank",
+                        "rider_name",
+                        "rider_url",
+                        "team_name",
+                        "nationality",
+                        "time",
+                        "status",
+                    )
+                except Exception:
+                    stage_rows = []
+                normalized_stage_results = normalize_result_rows(stage_rows, limit=MAX_RESULT_ROWS)
+                if normalized_stage_results:
+                    stage_result_snapshots[str(stage_number)] = normalized_stage_results
+
+                try:
+                    gc_rows = detail.gc(
+                        "rank",
+                        "rider_name",
+                        "rider_url",
+                        "team_name",
+                        "nationality",
+                        "time",
+                    )
+                except Exception:
+                    gc_rows = []
+                normalized_gc = normalize_result_rows(gc_rows, limit=MAX_RESULT_ROWS)
+                if normalized_gc:
+                    gc_snapshots[str(stage_number)] = normalized_gc
+
+                try:
+                    points_rows = detail.points(
+                        "rank",
+                        "rider_name",
+                        "rider_url",
+                        "team_name",
+                        "nationality",
+                        "points",
+                    )
+                except Exception:
+                    points_rows = []
+                normalized_points = normalize_result_rows(
+                    points_rows,
+                    limit=MAX_RESULT_ROWS,
+                    value_field="points",
+                    include_status=False,
+                )
+                if normalized_points:
+                    points_snapshots[str(stage_number)] = normalized_points
+
+                try:
+                    kom_rows = detail.kom(
+                        "rank",
+                        "rider_name",
+                        "rider_url",
+                        "team_name",
+                        "nationality",
+                        "points",
+                    )
+                except Exception:
+                    kom_rows = []
+                normalized_kom = normalize_result_rows(
+                    kom_rows,
+                    limit=MAX_RESULT_ROWS,
+                    value_field="points",
+                    include_status=False,
+                )
+                if normalized_kom:
+                    kom_snapshots[str(stage_number)] = normalized_kom
+
+                try:
+                    youth_rows = detail.youth(
+                        "rank",
+                        "rider_name",
+                        "rider_url",
+                        "team_name",
+                        "nationality",
+                        "time",
+                    )
+                except Exception:
+                    youth_rows = []
+                normalized_youth = normalize_result_rows(
+                    youth_rows,
+                    limit=MAX_RESULT_ROWS,
+                    include_status=False,
+                )
+                if normalized_youth:
+                    youth_snapshots[str(stage_number)] = normalized_youth
+
+                try:
+                    teams_rows = detail.teams(
+                        "rank",
+                        "team_name",
+                        "nationality",
+                        "time",
+                    )
+                except Exception:
+                    teams_rows = []
+                normalized_teams = normalize_result_rows(
+                    teams_rows,
+                    limit=MAX_RESULT_ROWS,
+                    name_field="team_name",
+                    include_team_name=False,
+                    include_status=False,
+                )
+                if normalized_teams:
+                    teams_snapshots[str(stage_number)] = normalized_teams
             except Exception:
                 pass  # leave fields empty if stage page not yet available
 
@@ -516,14 +655,135 @@ def fetch_stages(
             stage_dict["elevation"] = elevation
         result.append(stage_dict)
 
-    return result if result else None
+    return (
+        result if result else None,
+        gc_snapshots if gc_snapshots else None,
+        stage_result_snapshots if stage_result_snapshots else None,
+        points_snapshots if points_snapshots else None,
+        kom_snapshots if kom_snapshots else None,
+        youth_snapshots if youth_snapshots else None,
+        teams_snapshots if teams_snapshots else None,
+    )
 
 
-def write_generated_data(races: list[dict], startlists: dict, stages: dict) -> None:
+def normalize_result_rows(
+    raw_rows: list[dict],
+    limit: int = MAX_RESULT_ROWS,
+    *,
+    name_field: str = "rider_name",
+    value_field: Optional[str] = "time",
+    include_team_name: bool = True,
+    include_status: bool = True,
+) -> Optional[list]:
+    normalized: list[dict] = []
+
+    for row in raw_rows:
+        if len(normalized) >= limit:
+            break
+
+        rider_name = str(row.get(name_field) or "").strip()
+        rank_value = row.get("rank")
+        if not rider_name or rank_value in (None, ""):
+            continue
+
+        entry: dict = {
+            "rankLabel": str(rank_value).strip(),
+            "riderName": rider_name,
+        }
+
+        rider_url = str(row.get("rider_url") or "").strip()
+        if rider_url:
+            entry["pcsSlug"] = rider_url
+
+        nationality = str(row.get("nationality") or "").strip().upper()
+        if len(nationality) == 2:
+            entry["nationality"] = nationality
+
+        team_name = str(row.get("team_name") or "").strip()
+        if include_team_name and team_name:
+            entry["teamName"] = team_name
+
+        if value_field:
+            time_value = str(row.get(value_field) or "").strip()
+            if time_value:
+                entry["time"] = time_value
+
+        if include_status:
+            status_value = str(row.get("status") or "").strip()
+            if status_value:
+                entry["status"] = status_value
+
+        normalized.append(entry)
+
+    return normalized if normalized else None
+
+
+def fetch_results(
+    pcs_slug: str,
+    is_one_day_race: bool,
+    delay: float = 0.0,
+    limit: int = MAX_RESULT_ROWS,
+) -> Optional[list]:
+    """
+    Fetch the top rows of the final result table for a completed race.
+    Returns a list of normalized result rows, or None if unavailable.
+    """
+    from procyclingstats import Stage as PCSStage
+
+    relative_url = f"{pcs_slug}/result" if is_one_day_race else f"{pcs_slug}/gc"
+
+    try:
+        if delay > 0:
+            time.sleep(delay)
+        stage = PCSStage(relative_url)
+        if is_one_day_race:
+            raw_rows = stage.results(
+                "rank",
+                "rider_name",
+                "rider_url",
+                "team_name",
+                "nationality",
+                "time",
+                "status",
+            )
+        else:
+            raw_rows = stage.gc(
+                "rank",
+                "rider_name",
+                "rider_url",
+                "team_name",
+                "nationality",
+                "time",
+            )
+        return normalize_result_rows(raw_rows, limit=limit)
+    except Exception as exc:
+        print(f"  ! No results for {pcs_slug}: {exc}")
+        return None
+
+
+def write_generated_data(
+    races: list[dict],
+    startlists: dict,
+    stages: dict,
+    results: dict,
+    gc_standings: dict,
+    stage_results: dict,
+    points_standings: dict,
+    kom_standings: dict,
+    youth_standings: dict,
+    teams_standings: dict,
+) -> None:
     payload = {
         "races": races,
         "startlists": startlists,
         "stages": stages,
+        "results": results,
+        "gcStandings": gc_standings,
+        "stageResults": stage_results,
+        "pointsStandings": points_standings,
+        "komStandings": kom_standings,
+        "youthStandings": youth_standings,
+        "teamsStandings": teams_standings,
     }
 
     GENERATED_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -614,6 +874,13 @@ def main():
 
     startlists: dict[str, list] = {}
     stages_map: dict[str, list] = {}
+    results_map: dict[str, list] = {}
+    gc_standings_map: dict[str, dict] = {}
+    stage_results_map: dict[str, dict] = {}
+    points_standings_map: dict[str, dict] = {}
+    kom_standings_map: dict[str, dict] = {}
+    youth_standings_map: dict[str, dict] = {}
+    teams_standings_map: dict[str, dict] = {}
     team_country_cache = load_team_country_cache()
     cache_lock = threading.Lock()
     initial_team_country_cache = json.dumps(team_country_cache, sort_keys=True)
@@ -668,37 +935,148 @@ def main():
 
     print(f"\nCollected {len(startlists)} startlists.")
 
+    eligible_results_races = [
+        race
+        for race in races_with_slug
+        if race.get("startDate") == race.get("endDate") and race.get("endDate", "") <= today_iso
+    ]
+
+    def _fetch_results(race):
+        pcs_slug = race.get("pcsSlug")
+        if not pcs_slug:
+            return race["id"], None
+
+        race_id = race["id"]
+        is_one_day_race = race.get("startDate") == race.get("endDate")
+        print(f"  [results:{race_id}] {pcs_slug}")
+        rows = fetch_results(
+            pcs_slug,
+            is_one_day_race=is_one_day_race,
+            delay=args.delay,
+        )
+        if rows:
+            print(f"    Added top {len(rows)} results")
+        return race_id, rows
+
+    if eligible_results_races:
+        print(
+            f"\nFetching final one-day results for {len(eligible_results_races)} races "
+            "(ending today or earlier) …"
+        )
+        result_workers = min(2, args.workers, len(eligible_results_races))
+        with ThreadPoolExecutor(max_workers=result_workers) as executor:
+            for race_id, rows in executor.map(_fetch_results, eligible_results_races):
+                if rows:
+                    results_map[race_id] = rows
+
+    print(f"\nCollected {len(results_map)} result files.")
+
     multi_day_races = [race for race in races if race.get("startDate") != race.get("endDate")]
     eligible_stage_races = [race for race in multi_day_races if race.get("pcsSlug")]
 
     def _fetch_stages(race):
         pcs_slug = race.get("pcsSlug")
         if not pcs_slug:
-            return race["id"], None
+            return race["id"], None, None, None, None, None, None, None
 
         race_id = race["id"]
         start_date = race.get("startDate", "")
         end_date = race.get("endDate", "")
         print(f"  [stages:{race_id}] {pcs_slug}")
-        stages = fetch_stages(pcs_slug, start_date, end_date, delay=args.delay)
+        (
+            stages,
+            gc_standings,
+            stage_results,
+            points_standings,
+            kom_standings,
+            youth_standings,
+            teams_standings,
+        ) = fetch_stages(
+            pcs_slug,
+            start_date,
+            end_date,
+            delay=args.delay,
+        )
         if stages:
             print(f"    Added {len(stages)} stages")
-        return race_id, stages
+        if gc_standings:
+            print(f"    Added {len(gc_standings)} GC snapshots")
+        if stage_results:
+            print(f"    Added {len(stage_results)} stage result snapshots")
+        if points_standings:
+            print(f"    Added {len(points_standings)} points snapshots")
+        if kom_standings:
+            print(f"    Added {len(kom_standings)} KOM snapshots")
+        if youth_standings:
+            print(f"    Added {len(youth_standings)} youth snapshots")
+        if teams_standings:
+            print(f"    Added {len(teams_standings)} team snapshots")
+        return (
+            race_id,
+            stages,
+            gc_standings,
+            stage_results,
+            points_standings,
+            kom_standings,
+            youth_standings,
+            teams_standings,
+        )
 
     if eligible_stage_races:
         print(f"\nFetching stages for {len(eligible_stage_races)} races …")
         stage_workers = min(2, args.workers, len(eligible_stage_races))
         with ThreadPoolExecutor(max_workers=stage_workers) as executor:
-            for race_id, stages in executor.map(_fetch_stages, eligible_stage_races):
+            for (
+                race_id,
+                stages,
+                gc_standings,
+                stage_results,
+                points_standings,
+                kom_standings,
+                youth_standings,
+                teams_standings,
+            ) in executor.map(
+                _fetch_stages,
+                eligible_stage_races,
+            ):
                 if stages:
                     stages_map[race_id] = stages
+                if gc_standings:
+                    gc_standings_map[race_id] = gc_standings
+                if stage_results:
+                    stage_results_map[race_id] = stage_results
+                if points_standings:
+                    points_standings_map[race_id] = points_standings
+                if kom_standings:
+                    kom_standings_map[race_id] = kom_standings
+                if youth_standings:
+                    youth_standings_map[race_id] = youth_standings
+                if teams_standings:
+                    teams_standings_map[race_id] = teams_standings
 
     print(f"\nCollected {len(stages_map)} stage files.")
+    print(f"Collected {len(gc_standings_map)} GC standing files.")
+    print(f"Collected {len(stage_results_map)} stage result files.")
+    print(f"Collected {len(points_standings_map)} points standing files.")
+    print(f"Collected {len(kom_standings_map)} KOM standing files.")
+    print(f"Collected {len(youth_standings_map)} youth standing files.")
+    print(f"Collected {len(teams_standings_map)} team standing files.")
 
     if json.dumps(team_country_cache, sort_keys=True) != initial_team_country_cache:
         write_team_country_cache(team_country_cache)
 
-    write_generated_data(races, startlists, stages_map)
+    write_generated_data(
+        races,
+        startlists,
+        stages_map,
+        results_map,
+        gc_standings_map,
+        stage_results_map,
+        points_standings_map,
+        kom_standings_map,
+        youth_standings_map,
+        teams_standings_map,
+    )
     print(f"\nWrote local runtime data to {GENERATED_PATH}")
     print("\nSummary")
     print(f"  Slugs in date window: {len(slugs)}")
@@ -706,8 +1084,16 @@ def main():
     print(f"  Startlists eligible: {len(eligible_startlist_races)}")
     print(f"  Startlists skipped (>7 days away): {skipped_future_startlists}")
     print(f"  Startlists collected: {len(startlists)}")
+    print(f"  One-day results eligible (ending today or earlier): {len(eligible_results_races)}")
+    print(f"  Result sets collected: {len(results_map)}")
     print(f"  Multi-day races eligible for stages: {len(eligible_stage_races)}")
     print(f"  Stage sets collected: {len(stages_map)}")
+    print(f"  GC standing sets collected: {len(gc_standings_map)}")
+    print(f"  Stage result sets collected: {len(stage_results_map)}")
+    print(f"  Points standing sets collected: {len(points_standings_map)}")
+    print(f"  KOM standing sets collected: {len(kom_standings_map)}")
+    print(f"  Youth standing sets collected: {len(youth_standings_map)}")
+    print(f"  Team standing sets collected: {len(teams_standings_map)}")
 
 
 if __name__ == "__main__":
