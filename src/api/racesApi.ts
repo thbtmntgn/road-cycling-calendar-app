@@ -2,20 +2,24 @@ import {
   ApiResponse,
   Race,
   Gender,
+  RaceCategory,
+  RaceFilterGroup,
   RaceGeneralStandingsByStage,
   RaceKomStandingsByStage,
   RacePointsStandingsByStage,
   RaceResult,
   RaceStageResultsByStage,
   RaceTeamsStandingsByStage,
+  UciClass,
   RaceYouthStandingsByStage,
   StartlistTeam,
   Stage,
 } from '../types';
+import { getRaceFilterGroupFromUciClass } from '../constants/raceFilters';
 import pcsData from '../generated/pcsData';
 
 const localData = pcsData as {
-  races: Race[];
+  races: Array<Partial<Race> & { category?: string; filterGroup?: string; uciClass?: string }>;
   startlists: Record<string, StartlistTeam[]>;
   stages: Record<string, Stage[]>;
   results?: Record<string, RaceResult[]>;
@@ -27,8 +31,160 @@ const localData = pcsData as {
   teamsStandings?: Record<string, RaceTeamsStandingsByStage>;
 };
 
+const normalizeUciClass = (uciClass: string | undefined): UciClass | null => {
+  if (!uciClass) {
+    return null;
+  }
+
+  const normalized = uciClass.trim();
+  return getRaceFilterGroupFromUciClass(normalized) ? (normalized as UciClass) : null;
+};
+
+const getLegacyUciClass = (
+  category: string | undefined,
+  filterGroup: RaceFilterGroup | null,
+  isOneDayRace: boolean
+): UciClass | null => {
+  switch (category) {
+    case RaceCategory.WorldTour:
+      return isOneDayRace ? '1.UWT' : '2.UWT';
+    case RaceCategory.WomenWorldTour:
+      return isOneDayRace ? '1.WWT' : '2.WWT';
+    case 'WorldChampionship':
+    case 'WomenWorldChampionship':
+    case RaceCategory.SpecialEvent:
+    case RaceCategory.WomenSpecialEvent:
+      return 'WC';
+    case RaceCategory.ProSeries:
+    case RaceCategory.WomenProSeries:
+      return isOneDayRace ? '1.Pro' : '2.Pro';
+    case RaceCategory.NationalChampionship:
+    case RaceCategory.WomenNationalChampionship:
+      return 'NC';
+    case 'Continental':
+    case RaceCategory.ContinentalClass1:
+      return isOneDayRace ? '1.1' : '2.1';
+    case RaceCategory.ContinentalClass2:
+      return isOneDayRace ? '1.2' : '2.2';
+    default:
+      if (filterGroup === RaceFilterGroup.ContinentalClass2) {
+        return isOneDayRace ? '1.2' : '2.2';
+      }
+      if (filterGroup === RaceFilterGroup.ContinentalClass1) {
+        return isOneDayRace ? '1.1' : '2.1';
+      }
+      return null;
+  }
+};
+
+const normalizeFilterGroup = (
+  filterGroup: string | undefined,
+  uciClass: UciClass
+): RaceFilterGroup | null => {
+  if (filterGroup && Object.values(RaceFilterGroup).includes(filterGroup as RaceFilterGroup)) {
+    return filterGroup as RaceFilterGroup;
+  }
+
+  return getRaceFilterGroupFromUciClass(uciClass);
+};
+
+const getCategoryForFilterGroup = (
+  filterGroup: RaceFilterGroup,
+  gender: Gender
+): RaceCategory => {
+  switch (filterGroup) {
+    case RaceFilterGroup.WorldTour:
+      return gender === Gender.Women ? RaceCategory.WomenWorldTour : RaceCategory.WorldTour;
+    case RaceFilterGroup.SpecialEvent:
+      return gender === Gender.Women ? RaceCategory.WomenSpecialEvent : RaceCategory.SpecialEvent;
+    case RaceFilterGroup.ProSeries:
+      return gender === Gender.Women ? RaceCategory.WomenProSeries : RaceCategory.ProSeries;
+    case RaceFilterGroup.ContinentalClass1:
+      return RaceCategory.ContinentalClass1;
+    case RaceFilterGroup.ContinentalClass2:
+      return RaceCategory.ContinentalClass2;
+    case RaceFilterGroup.NationalChampionship:
+      return gender === Gender.Women
+        ? RaceCategory.WomenNationalChampionship
+        : RaceCategory.NationalChampionship;
+    default:
+      return RaceCategory.ContinentalClass1;
+  }
+};
+
+const normalizeCategory = (
+  category: string | undefined,
+  filterGroup: RaceFilterGroup,
+  gender: Gender
+): RaceCategory => {
+  switch (category) {
+    case RaceCategory.WorldTour:
+    case RaceCategory.WomenWorldTour:
+    case RaceCategory.SpecialEvent:
+    case RaceCategory.WomenSpecialEvent:
+    case RaceCategory.ProSeries:
+    case RaceCategory.WomenProSeries:
+    case RaceCategory.NationalChampionship:
+    case RaceCategory.WomenNationalChampionship:
+    case RaceCategory.ContinentalClass1:
+    case RaceCategory.ContinentalClass2:
+      return category;
+    case 'WorldChampionship':
+    case 'WomenWorldChampionship':
+      return getCategoryForFilterGroup(RaceFilterGroup.SpecialEvent, gender);
+    case 'Continental':
+      return getCategoryForFilterGroup(filterGroup, gender);
+    default:
+      return getCategoryForFilterGroup(filterGroup, gender);
+  }
+};
+
+const normalizeRace = (race: Partial<Race> & { category?: string; filterGroup?: string; uciClass?: string }): Race | null => {
+  if (
+    !race.id ||
+    !race.name ||
+    !race.startDate ||
+    !race.endDate ||
+    !race.country ||
+    !race.gender
+  ) {
+    return null;
+  }
+
+  const gender = race.gender as Gender;
+  const isOneDayRace = race.startDate === race.endDate;
+  const initialFilterGroup =
+    race.filterGroup && Object.values(RaceFilterGroup).includes(race.filterGroup as RaceFilterGroup)
+      ? (race.filterGroup as RaceFilterGroup)
+      : null;
+  const uciClass =
+    normalizeUciClass(race.uciClass) ??
+    getLegacyUciClass(race.category, initialFilterGroup, isOneDayRace);
+
+  if (!uciClass) {
+    return null;
+  }
+
+  const filterGroup = normalizeFilterGroup(race.filterGroup, uciClass);
+  if (!filterGroup) {
+    return null;
+  }
+
+  return {
+    ...race,
+    gender,
+    uciClass,
+    filterGroup,
+    category: normalizeCategory(race.category, filterGroup, gender),
+  } as Race;
+};
+
+const normalizedRaces = localData.races
+  .map((race) => normalizeRace(race))
+  .filter((race): race is Race => race !== null);
+
 export const fetchRaces = async (): Promise<ApiResponse> => {
-  return { success: true, data: localData.races };
+  return { success: true, data: normalizedRaces };
 };
 
 export const fetchStartlist = async (raceId: string): Promise<StartlistTeam[]> => {

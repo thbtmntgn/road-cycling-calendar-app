@@ -20,14 +20,16 @@ import UpcomingBigRacesList, {
   UpcomingBigRace,
   UpcomingBigRacesSection,
 } from '../components/UpcomingBigRacesList';
-import FilterScreen, {
-  FILTER_CATS,
-  CategoryFilter,
-  makeDefaultFilter,
-} from '../components/FilterScreen';
+import FilterScreen from '../components/FilterScreen';
+import {
+  isDefaultRaceFilterState,
+  isRaceVisibleForFilterState,
+  makeDefaultRaceFilterState,
+  RaceFilterState,
+} from '../constants/raceFilters';
 import { getDateRange, getTodayDate } from '../utils/dateUtils';
 import { fetchRaces, getRacesForDate, filterRacesByGender, fetchStages } from '../api/racesApi';
-import { Race, Gender, RaceCategory, Stage } from '../types';
+import { Race, Gender, Stage } from '../types';
 import { CalendarStackParamList } from '../navigation/types';
 import {
   isGrandTourRace,
@@ -136,11 +138,11 @@ const getUpcomingBigRacesForGender = (
   races: Race[],
   gender: Gender,
   referenceDate: string,
-  enabledCats: Set<RaceCategory> | null
+  filters: RaceFilterState
 ): UpcomingBigRace[] => {
   const from = dayjs(referenceDate).startOf('day');
-  const racesForGender = filterRacesByGender(races, gender).filter(
-    (r) => !enabledCats || enabledCats.has(r.category)
+  const racesForGender = filterRacesByGender(races, gender).filter((race) =>
+    isRaceVisibleForFilterState(race, filters)
   );
 
   return racesForGender
@@ -176,7 +178,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedGender, setSelectedGender] = useState<Gender>(Gender.Men);
   const [showFilter, setShowFilter] = useState(false);
-  const [savedFilter, setSavedFilter] = useState<CategoryFilter>(makeDefaultFilter);
+  const [savedFilter, setSavedFilter] = useState<RaceFilterState>(makeDefaultRaceFilterState);
   const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
   const [stageCountsMap, setStageCountsMap] = useState<Record<string, number>>({});
   const [racesViewportHeight, setRacesViewportHeight] = useState<number>(0);
@@ -202,16 +204,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     loadRaces();
   }, []);
 
-  // Derive enabled categories for the selected gender from the saved filter
-  const enabledCatsForGender = useMemo(() => {
-    const gk = selectedGender === Gender.Men ? 'men' : 'women';
-    const cats = FILTER_CATS[gk];
-    const enabled = savedFilter[gk];
-    if (enabled.size === cats.length) return null; // all on — no filtering needed
-    return new Set(cats.filter((c) => enabled.has(c.label)).map((c) => c.category));
-  }, [savedFilter, selectedGender]);
-
-  // Filter races when date, gender, or category filter changes
+  // Filter races when date, gender, or race-level filter changes
   useEffect(() => {
     if (races.length === 0) {
       setFilteredRaces([]);
@@ -220,13 +213,10 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
 
     let result = getRacesForDate(races, selectedDate);
     result = filterRacesByGender(result, selectedGender);
-
-    if (enabledCatsForGender) {
-      result = result.filter((r) => enabledCatsForGender.has(r.category));
-    }
+    result = result.filter((race) => isRaceVisibleForFilterState(race, savedFilter));
 
     setFilteredRaces(result);
-  }, [races, selectedDate, selectedGender, enabledCatsForGender]);
+  }, [races, savedFilter, selectedDate, selectedGender]);
 
   // Fetch stages for all multi-day races visible on the selected date
   useEffect(() => {
@@ -274,8 +264,8 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
 
   const todayDate = getTodayDate();
   const upcomingBigRaces = useMemo(
-    () => getUpcomingBigRacesForGender(races, selectedGender, todayDate, enabledCatsForGender),
-    [races, selectedGender, todayDate, enabledCatsForGender]
+    () => getUpcomingBigRacesForGender(races, selectedGender, todayDate, savedFilter),
+    [races, savedFilter, selectedGender, todayDate]
   );
   const emptyDayUpcomingBigRaces = useMemo(
     () => upcomingBigRaces.slice(0, UPCOMING_BIG_RACES_EMPTY_DAY_LIMIT),
@@ -307,11 +297,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     Math.abs(dayjs(selectedDate).diff(dayjs(todayDate), 'day')) >= TODAY_SHORTCUT_THRESHOLD_DAYS;
   const showBottomShortcut = showTodayShortcut;
 
-  const isDefault =
-    savedFilter.men.size === FILTER_CATS.men.length &&
-    savedFilter.women.size === FILTER_CATS.women.length;
-
-  const genderKey = selectedGender === Gender.Men ? 'men' : 'women';
+  const isDefault = isDefaultRaceFilterState(savedFilter);
 
   const handleTodayPress = () => {
     setDates((currentDates) =>
@@ -366,16 +352,14 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     [handleDaySwipe]
   );
 
-  const handleFilterSave = useCallback((newFilters: CategoryFilter) => {
-    setSavedFilter({ men: new Set(newFilters.men), women: new Set(newFilters.women) });
+  const handleFilterSave = useCallback((newFilters: RaceFilterState) => {
+    setSavedFilter({ ...newFilters });
     setShowFilter(false);
   }, []);
 
   const handleRacePress = (race: Race) => {
     navigation.navigate('RaceDetail', { race, selectedDate });
   };
-
-  const summaryLabel = `${dayjs(selectedDate).format('ddd DD MMM')} · ${selectedGender}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -447,7 +431,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
                 onPress={() => setShowFilter(true)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Filter race categories"
+                accessibilityLabel="Filter race levels"
               >
                 <MaterialCommunityIcons
                   name="filter-variant"
@@ -458,18 +442,6 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.subtitle}>{summaryLabel}</Text>
-          {!isDefault && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>
-                {savedFilter[genderKey].size} of {FILTER_CATS[genderKey].length} categories
-              </Text>
-              <Text style={styles.filterBadgeSep}>·</Text>
-              <TouchableOpacity onPress={() => setShowFilter(true)} activeOpacity={0.7}>
-                <Text style={styles.filterBadgeEdit}>Edit</Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
 
         <View style={styles.dateSelectorWrap}>
@@ -536,7 +508,6 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
 
       <FilterScreen
         visible={showFilter}
-        activeGender={selectedGender}
         savedFilters={savedFilter}
         onSave={handleFilterSave}
         onClose={() => setShowFilter(false)}
@@ -675,31 +646,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5C842',
     borderWidth: 1.5,
     borderColor: '#0A0A0C',
-  },
-  subtitle: {
-    marginTop: 8,
-    color: '#71717A',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  filterBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 4,
-  },
-  filterBadgeText: {
-    color: '#F5C842',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  filterBadgeSep: {
-    color: '#3F3F46',
-    fontSize: 11,
-  },
-  filterBadgeEdit: {
-    color: '#52525B',
-    fontSize: 11,
   },
   dateSelectorWrap: {
     marginBottom: 16,

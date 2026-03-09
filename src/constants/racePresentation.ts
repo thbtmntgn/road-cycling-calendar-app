@@ -66,31 +66,25 @@ const buildPresentation = (
 
 export const CATEGORY_PRESENTATION: Record<RaceCategory, RacePresentation> = {
   [RaceCategory.WorldTour]: buildPresentation('WorldTour', 1, 1, '#DC2626'),
-  [RaceCategory.WomenWorldTour]: buildPresentation('Women WorldTour', 2, 1, '#EC4899'),
-  [RaceCategory.WorldChampionship]: buildPresentation('World Championship', 3, 1, '#F97316'),
-  [RaceCategory.WomenWorldChampionship]: buildPresentation(
-    'Women World Championship',
-    4,
-    1,
-    '#FB7185'
-  ),
+  [RaceCategory.WomenWorldTour]: buildPresentation('WorldTour', 2, 1, '#EC4899'),
+  [RaceCategory.SpecialEvent]: buildPresentation('Special Events', 3, 1, '#F97316'),
+  [RaceCategory.WomenSpecialEvent]: buildPresentation('Special Events', 4, 1, '#FB7185'),
   [RaceCategory.ProSeries]: buildPresentation('ProSeries', 5, 2, '#3C9FD0'),
-  [RaceCategory.WomenProSeries]: buildPresentation('Women ProSeries', 6, 2, '#9A7CF6'),
+  [RaceCategory.WomenProSeries]: buildPresentation('ProSeries', 6, 2, '#9A7CF6'),
   [RaceCategory.NationalChampionship]: buildPresentation(
-    'National Championship',
+    'National Championships',
     7,
     2,
     '#8A98AB'
   ),
   [RaceCategory.WomenNationalChampionship]: buildPresentation(
-    'Women National Championship',
+    'National Championships',
     8,
     2,
     '#BEC8D8'
   ),
-  [RaceCategory.Continental]: buildPresentation('Continental', 9, 3, '#F4A261'),
-  [RaceCategory.JuniorMen]: buildPresentation('Junior', 10, 3, '#34D399'),
-  [RaceCategory.JuniorWomen]: buildPresentation('Women Junior', 11, 3, '#6EE7B7'),
+  [RaceCategory.ContinentalClass1]: buildPresentation('Continental – Class 1', 9, 3, '#F4A261'),
+  [RaceCategory.ContinentalClass2]: buildPresentation('Continental – Class 2', 10, 3, '#D97706'),
 };
 
 const DEFAULT_PRESENTATION = buildPresentation('Race', 99, 3, '#738497');

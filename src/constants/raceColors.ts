@@ -21,15 +21,14 @@ interface RaceSubgroupPalette extends BadgePalette {
 export const CATEGORY_ACCENT_COLORS: Record<RaceCategory, CategoryAccentPalette> = {
   [RaceCategory.WorldTour]: { oneDay: '#EF4444', stage: '#DC2626' },
   [RaceCategory.WomenWorldTour]: { oneDay: '#F472B6', stage: '#EC4899' },
-  [RaceCategory.WorldChampionship]: { oneDay: '#FB923C', stage: '#F97316' },
-  [RaceCategory.WomenWorldChampionship]: { oneDay: '#FDA4AF', stage: '#FB7185' },
+  [RaceCategory.SpecialEvent]: { oneDay: '#FB923C', stage: '#F97316' },
+  [RaceCategory.WomenSpecialEvent]: { oneDay: '#FDA4AF', stage: '#FB7185' },
   [RaceCategory.ProSeries]: { oneDay: '#5AB6E3', stage: '#3C9FD0' },
   [RaceCategory.WomenProSeries]: { oneDay: '#B39BFF', stage: '#9A7CF6' },
   [RaceCategory.NationalChampionship]: { oneDay: '#A8B4C5', stage: '#8A98AB' },
   [RaceCategory.WomenNationalChampionship]: { oneDay: '#D7DEE9', stage: '#BEC8D8' },
-  [RaceCategory.Continental]: { oneDay: '#F6B67A', stage: '#F4A261' },
-  [RaceCategory.JuniorMen]: { oneDay: '#6EE7B7', stage: '#34D399' },
-  [RaceCategory.JuniorWomen]: { oneDay: '#A7F3D0', stage: '#6EE7B7' },
+  [RaceCategory.ContinentalClass1]: { oneDay: '#F6B67A', stage: '#F4A261' },
+  [RaceCategory.ContinentalClass2]: { oneDay: '#FBBF24', stage: '#D97706' },
 };
 
 const DEFAULT_CATEGORY_ACCENTS: CategoryAccentPalette = {

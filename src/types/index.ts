@@ -2,21 +2,47 @@
 export enum RaceCategory {
   WorldTour = 'WorldTour',
   WomenWorldTour = 'WomenWorldTour',
-  WorldChampionship = 'WorldChampionship',
-  WomenWorldChampionship = 'WomenWorldChampionship',
+  SpecialEvent = 'SpecialEvent',
+  WomenSpecialEvent = 'WomenSpecialEvent',
   ProSeries = 'ProSeries',
   WomenProSeries = 'WomenProSeries',
   NationalChampionship = 'NationalChampionship',
   WomenNationalChampionship = 'WomenNationalChampionship',
-  Continental = 'Continental',
-  JuniorMen = 'JuniorMen',
-  JuniorWomen = 'JuniorWomen',
+  ContinentalClass1 = 'ContinentalClass1',
+  ContinentalClass2 = 'ContinentalClass2',
 }
 
 // Gender types
 export enum Gender {
   Men = 'Men',
   Women = 'Women',
+}
+
+export type UciClass =
+  | '1.UWT'
+  | '2.UWT'
+  | '1.WWT'
+  | '2.WWT'
+  | '1.Pro'
+  | '2.Pro'
+  | '1.PRO'
+  | '2.PRO'
+  | '1.1'
+  | '2.1'
+  | '1.2'
+  | '2.2'
+  | 'WC'
+  | 'OG'
+  | 'CC'
+  | 'NC';
+
+export enum RaceFilterGroup {
+  WorldTour = 'worldtour',
+  SpecialEvent = 'special_event',
+  ProSeries = 'proseries',
+  ContinentalClass1 = 'continental_class1',
+  ContinentalClass2 = 'continental_class2',
+  NationalChampionship = 'national_championship',
 }
 
 // Race data interface
@@ -26,6 +52,8 @@ export interface Race {
   name: string;
   startDate: string;
   endDate: string;
+  uciClass: UciClass;
+  filterGroup: RaceFilterGroup;
   category: RaceCategory;
   gender: Gender;
   country: string;

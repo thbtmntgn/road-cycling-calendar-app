@@ -15,6 +15,7 @@ import time
 import argparse
 import calendar
 import threading
+import re
 import warnings
 from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
@@ -40,25 +41,27 @@ from bs4 import BeautifulSoup
 from procyclingstats import Race
 
 # ---------------------------------------------------------------------------
-# Category mapping
+# Race-level mapping
 # ---------------------------------------------------------------------------
-# UCI tour codes returned by Race.uci_tour() → app RaceCategory enum value
-# Categories not listed here are excluded from the output (e.g. NC, CC, WC).
-UCI_TOUR_TO_CATEGORY = {
-    "1.UWT": "WorldTour",
-    "2.UWT": "WorldTour",
-    "1.WWT": "WomenWorldTour",
-    "2.WWT": "WomenWorldTour",
-    "WC":    "WorldChampionship",
-    "1.Pro": "ProSeries",    # Men's ProSeries one-day
-    "2.Pro": "ProSeries",    # Men's ProSeries stage
-    "1.PRO": "ProSeries",    # alternate capitalisation seen on PCS
-    "2.PRO": "ProSeries",
-    "NC":    "NationalChampionship",
-    "1.1":   "Continental",  # UCI Continental one-day (higher tier)
-    "2.1":   "Continental",  # UCI Continental stage race (higher tier)
-    "1.2":   "Continental",  # UCI Continental one-day (lower tier)
-    "2.2":   "Continental",  # UCI Continental stage race (lower tier)
+# UCI tour codes returned by the PCS race calendar table.
+# Codes not listed here are excluded from the generated app data.
+UCI_TOUR_TO_FILTER_GROUP = {
+    "1.UWT": "worldtour",
+    "2.UWT": "worldtour",
+    "1.WWT": "worldtour",
+    "2.WWT": "worldtour",
+    "WC":    "special_event",
+    "OG":    "special_event",
+    "CC":    "special_event",
+    "1.Pro": "proseries",
+    "2.Pro": "proseries",
+    "1.PRO": "proseries",  # alternate capitalisation seen on PCS
+    "2.PRO": "proseries",
+    "NC":    "national_championship",
+    "1.1":   "continental_class1",
+    "2.1":   "continental_class1",
+    "1.2":   "continental_class2",
+    "2.2":   "continental_class2",
 }
 
 # Gender override for WWT races (PCS category() sometimes says "Men Elite" for
@@ -147,10 +150,10 @@ def build_team_jersey_url(team_url: str) -> Optional[str]:
     return f"https://www.procyclingstats.com/images/shirts/bx/eb/{team_slug}.png"
 
 
-# For NC and WC, exclude non-road-race and U23 events based on slug keywords.
-# Junior races are no longer excluded here — they are categorised as JuniorMen/JuniorWomen
-# in fetch_race_details via the pcs_category check below.
-NC_WC_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-crit"]
+# For NC / WC / CC / OG, exclude non-road-race and U23 events based on slug keywords.
+# Junior races are excluded later in fetch_race_details via the pcs_category string.
+SPECIAL_EVENT_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-crit"]
+JUNIOR_NAME_TOKEN_RE = re.compile(r"(^|[\s/-])(MJ|WJ)([\s/-]|$)", re.IGNORECASE)
 
 
 def parse_pcs_date(raw: str, year: int) -> str:
@@ -164,6 +167,20 @@ def parse_pcs_date(raw: str, year: int) -> str:
         return f"{year}-{int(month):02d}-{int(day):02d}"
     except Exception:
         return ""
+
+
+def is_junior_race(slug: str, name: str = "", pcs_category: str = "") -> bool:
+    slug_lower = (slug or "").lower()
+    name_lower = (name or "").lower()
+    pcs_category_lower = (pcs_category or "").lower()
+
+    if "junior" in slug_lower or "junior" in name_lower or "junior" in pcs_category_lower:
+        return True
+
+    if "-mj" in slug_lower or "-wj" in slug_lower:
+        return True
+
+    return bool(JUNIOR_NAME_TOKEN_RE.search(name or ""))
 
 
 def fetch_race_slugs(
@@ -195,7 +212,7 @@ def fetch_race_slugs(
             continue
 
         uci_tour = cols[4].get_text(strip=True)
-        if uci_tour not in UCI_TOUR_TO_CATEGORY:
+        if uci_tour not in UCI_TOUR_TO_FILTER_GROUP:
             continue
 
         link = row.find("a", href=True)
@@ -208,11 +225,15 @@ def fetch_race_slugs(
         if parts and parts[-1] in ("gc", "result", "startlist", "overview"):
             parts = parts[:-1]
         slug = "/".join(parts)  # e.g. "race/tour-de-france/2026"
+        race_name = link.get_text(" ", strip=True)
 
-        # For NC and WC, skip non-senior and non-road-race events
-        if uci_tour in {"NC", "WC"}:
+        if is_junior_race(slug, race_name):
+            continue
+
+        # For special-event style classifications, skip non-senior road races.
+        if uci_tour in {"NC", "WC", "CC", "OG"}:
             slug_lower = slug.lower()
-            if any(kw in slug_lower for kw in NC_WC_EXCLUDE_KEYWORDS):
+            if any(kw in slug_lower for kw in SPECIAL_EVENT_EXCLUDE_KEYWORDS):
                 continue
 
         # Pre-filter by date range using the date from the table (avoids
@@ -278,28 +299,36 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
         print(f"  ! Skipping {slug}: {exc}")
         return None
 
-    app_category = UCI_TOUR_TO_CATEGORY[uci_tour]
+    filter_group = UCI_TOUR_TO_FILTER_GROUP[uci_tour]
 
     # Determine gender:
     # - WWT races are always Women
-    # - For ProSeries, use the pcs_category string
+    # - Otherwise use the PCS category string
     if uci_tour in WWT_CATEGORIES:
         gender = "Women"
     elif "woman" in pcs_category.lower():
         gender = "Women"
-        # Promote to the corresponding women's category
-        if app_category == "ProSeries":
-            app_category = "WomenProSeries"
-        elif app_category == "WorldChampionship":
-            app_category = "WomenWorldChampionship"
-        elif app_category == "NationalChampionship":
-            app_category = "WomenNationalChampionship"
     else:
         gender = "Men"
 
-    # Override category for junior races (detected via pcs_category)
-    if "junior" in pcs_category.lower():
-        app_category = "JuniorWomen" if gender == "Women" else "JuniorMen"
+    # Skip juniors entirely: the race-level UI only exposes elite UCI classes.
+    if is_junior_race(slug, name, pcs_category):
+        return None
+
+    if filter_group == "worldtour":
+        app_category = "WomenWorldTour" if gender == "Women" else "WorldTour"
+    elif filter_group == "special_event":
+        app_category = "WomenSpecialEvent" if gender == "Women" else "SpecialEvent"
+    elif filter_group == "proseries":
+        app_category = "WomenProSeries" if gender == "Women" else "ProSeries"
+    elif filter_group == "national_championship":
+        app_category = "WomenNationalChampionship" if gender == "Women" else "NationalChampionship"
+    elif filter_group == "continental_class1":
+        app_category = "ContinentalClass1"
+    elif filter_group == "continental_class2":
+        app_category = "ContinentalClass2"
+    else:
+        return None
 
     result: dict = {
         "id": slug.replace("/", "-"),   # stable, unique string id
@@ -307,6 +336,8 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
         "name": name,
         "startDate": start_date,
         "endDate": end_date,
+        "uciClass": uci_tour,
+        "filterGroup": filter_group,
         "country": country,
         "category": app_category,
         "gender": gender,
@@ -874,11 +905,11 @@ def main():
 
     print(f"\nFetched {len(races)} races.")
 
-    # Summary by category
+    # Summary by filter group
     from collections import Counter
-    by_cat = Counter(r["category"] for r in races)
-    for cat, count in sorted(by_cat.items()):
-        print(f"  {cat}: {count}")
+    by_filter_group = Counter(r["filterGroup"] for r in races)
+    for filter_group, count in sorted(by_filter_group.items()):
+        print(f"  {filter_group}: {count}")
 
     startlists: dict[str, list] = {}
     stages_map: dict[str, list] = {}
