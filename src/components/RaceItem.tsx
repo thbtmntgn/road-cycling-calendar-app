@@ -18,6 +18,7 @@ import {
   isTopClassicRace,
 } from '../constants/racePresentation';
 import { Gender, Race, Stage } from '../types';
+import { formatStageLabel } from '../utils/stageUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 type RaceTierBadgeType = RaceSubgroupKey;
@@ -26,6 +27,7 @@ interface RaceItemProps {
   race: Race;
   onPress?: () => void;
   currentStage?: Stage | null;
+  currentStageProgress?: number | null;
   totalStages?: number;
 }
 
@@ -38,17 +40,11 @@ const countryToFlag = (code: string): string =>
 
 // ─── StagePill ────────────────────────────────────────────────────────────────
 
-const StagePill: React.FC<{ stage: number; total: number; color: string }> = ({
-  stage,
-  total,
-  color,
-}) => (
+const StagePill: React.FC<{ label: string; color: string }> = ({ label, color }) => (
   <View
     style={[stagePillStyles.pill, { backgroundColor: color + '22', borderColor: color + '55' }]}
   >
-    <Text style={[stagePillStyles.text, { color }]}>
-      STAGE {stage}/{total}
-    </Text>
+    <Text style={[stagePillStyles.text, { color }]}>{label.toUpperCase()}</Text>
   </View>
 );
 
@@ -200,7 +196,6 @@ const HorizontalProgressBar: React.FC<HorizontalProgressBarProps> = ({
       {Array.from({ length: total }).map((_, i) => {
         const stageNum = i + 1;
         const left = (stageNum / total) * barWidth;
-        const isPast = stageNum < current;
         const isCurrent = stageNum === current;
         const dotSize = isCurrent ? 6 : 4;
         return (
@@ -214,7 +209,7 @@ const HorizontalProgressBar: React.FC<HorizontalProgressBarProps> = ({
                 width: dotSize,
                 height: dotSize,
                 borderRadius: dotSize / 2,
-                backgroundColor: isCurrent ? color : isPast ? 'rgba(255,255,255,0.85)' : '#252A3A',
+                backgroundColor: isCurrent ? color : 'rgba(255,255,255,0.85)',
                 borderWidth: isCurrent ? 1.5 : 0,
                 borderColor: isCurrent ? '#FFFFFF' : 'transparent',
               },
@@ -250,7 +245,13 @@ const progressBarStyles = StyleSheet.create({
 
 // ─── RaceItem ─────────────────────────────────────────────────────────────────
 
-const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalStages }) => {
+const RaceItem: React.FC<RaceItemProps> = ({
+  race,
+  onPress,
+  currentStage,
+  currentStageProgress,
+  totalStages,
+}) => {
   const isOneDay = race.startDate === race.endDate;
   const categoryColor = getCategoryAccentColor(race.category, isOneDay);
   const isRestDay = !isOneDay && currentStage === null;
@@ -297,15 +298,11 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
       ? race.arrival || ''
       : '';
 
-  const stageNum = hasActiveStage
-    ? currentStage!.stageNumber === 0
-      ? 1
-      : currentStage!.stageNumber
-    : null;
-
-  const showProgressBar = hasActiveStage && totalStages != null && stageNum != null;
+  const stageLabel = hasActiveStage ? formatStageLabel(currentStage!.stageNumber) : null;
+  const showProgressBar =
+    hasActiveStage && totalStages != null && currentStageProgress != null;
   const hasRoute = !!(departure || arrival);
-  const hasBottomRightTierBadge = raceTier === 'major-tour';
+  const hasBottomRightTierBadge = raceTier != null;
 
   return (
     <TouchableOpacity
@@ -314,7 +311,11 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
       activeOpacity={onPress ? 0.7 : 1}
     >
       {showProgressBar && (
-        <HorizontalProgressBar current={stageNum!} total={totalStages!} color={categoryColor} />
+        <HorizontalProgressBar
+          current={currentStageProgress!}
+          total={totalStages!}
+          color={categoryColor}
+        />
       )}
 
       <View style={styles.content}>
@@ -324,10 +325,10 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
           <Text style={styles.raceName} numberOfLines={2}>
             {race.name}
           </Text>
-          {hasActiveStage && stageNum != null && totalStages != null && (
-            <StagePill stage={stageNum} total={totalStages} color={categoryColor} />
-          )}
-          {stageType && <StageTypeTag type={stageType} />}
+          {hasActiveStage && stageLabel ? (
+            <StagePill label={stageLabel} color={categoryColor} />
+          ) : null}
+          {stageType ? <StageTypeTag type={stageType} /> : null}
         </View>
 
         {/* Row 2: route or rest day */}
@@ -362,7 +363,6 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
                 <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
               </View>
             ) : null}
-            {raceTier && !hasBottomRightTierBadge ? <RaceTierBadge tier={raceTier} compact /> : null}
           </View>
 
           {raceTier && hasBottomRightTierBadge ? (

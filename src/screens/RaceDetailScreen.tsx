@@ -42,6 +42,7 @@ import {
   Stage,
   StartlistTeam,
 } from '../types';
+import { compareStageOrder, formatStageLabel, getStageProgressIndex } from '../utils/stageUtils';
 
 // Self-contained param list — works from both CalendarStack and FavoritesStack
 type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
@@ -75,17 +76,6 @@ const getCountryFlag = (code?: string | null): string | null => {
     .split('')
     .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
     .join('');
-};
-
-const formatStageLabel = (stageNumber: number): string => {
-  return stageNumber === 0 ? 'prologue' : `stage ${stageNumber}`;
-};
-
-const compareStageOrder = (left: Stage, right: Stage): number => {
-  if (left.date !== right.date) {
-    return left.date.localeCompare(right.date);
-  }
-  return left.stageNumber - right.stageNumber;
 };
 
 interface TeamJerseyProps {
@@ -138,6 +128,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === selectedDate);
   const stageOnSelectedDate =
     stagesOnSelectedDate.length > 0 ? stagesOnSelectedDate[stagesOnSelectedDate.length - 1] : null;
+  const stageProgressOnSelectedDate = getStageProgressIndex(sortedStages, stageOnSelectedDate);
   const stageNumberOnSelectedDate = stageOnSelectedDate?.stageNumber ?? null;
   const stageKey = stageNumberOnSelectedDate !== null ? String(stageNumberOnSelectedDate) : null;
   const generalStandingRows = isStageRace && stageKey ? gcStandingsByStage[stageKey] ?? [] : [];
@@ -510,6 +501,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
         <RaceItem
           race={race}
           currentStage={stageOnSelectedDate}
+          currentStageProgress={stageProgressOnSelectedDate}
           totalStages={sortedStages.length || undefined}
         />
 

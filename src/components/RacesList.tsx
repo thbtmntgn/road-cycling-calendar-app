@@ -10,6 +10,7 @@ interface RacesListProps {
   showEmptyMessage?: boolean;
   onPressRace?: (race: Race) => void;
   stagesMap?: Record<string, Stage | null>;
+  stageProgressMap?: Record<string, number | null>;
   stageCountsMap?: Record<string, number>;
   bottomPadding?: number;
   footer?: React.ReactNode;
@@ -62,6 +63,7 @@ const RacesList: React.FC<RacesListProps> = ({
   showEmptyMessage = true,
   onPressRace,
   stagesMap,
+  stageProgressMap,
   stageCountsMap,
   bottomPadding = 28,
   footer,
@@ -120,6 +122,7 @@ const RacesList: React.FC<RacesListProps> = ({
                     race={race}
                     onPress={onPressRace ? () => onPressRace(race) : undefined}
                     currentStage={stagesMap ? stagesMap[race.id] : undefined}
+                    currentStageProgress={stageProgressMap?.[race.id]}
                     totalStages={stageCountsMap?.[race.id]}
                   />
                 ))}

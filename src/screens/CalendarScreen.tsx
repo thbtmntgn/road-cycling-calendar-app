@@ -36,6 +36,7 @@ import {
   isMonumentRace,
   isTopClassicRace,
 } from '../constants/racePresentation';
+import { compareStageOrder, getStageProgressIndex } from '../utils/stageUtils';
 
 interface Props {
   navigation: NativeStackNavigationProp<CalendarStackParamList, 'Calendar'>;
@@ -179,6 +180,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [showFilter, setShowFilter] = useState(false);
   const [savedFilter, setSavedFilter] = useState<RaceFilterState>(makeDefaultRaceFilterState);
   const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
+  const [stageProgressMap, setStageProgressMap] = useState<Record<string, number | null>>({});
   const [stageCountsMap, setStageCountsMap] = useState<Record<string, number>>({});
   const [racesViewportHeight, setRacesViewportHeight] = useState<number>(0);
   const [racesMainContentHeight, setRacesMainContentHeight] = useState<number>(0);
@@ -222,6 +224,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     const multiDayRaces = filteredRaces.filter((r) => r.startDate !== r.endDate);
     if (multiDayRaces.length === 0) {
       setStagesMap({});
+      setStageProgressMap({});
       setStageCountsMap({});
       return;
     }
@@ -230,23 +233,33 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       const entries = await Promise.all(
         multiDayRaces.map(async (race) => {
           try {
-            const stages = await fetchStages(race.id);
-            const stage = stages.find((s) => s.date === selectedDate) ?? null;
-            return { id: race.id, stage, total: stages.length };
+            const stages = (await fetchStages(race.id)).sort(compareStageOrder);
+            const stagesOnSelectedDate = stages.filter((stage) => stage.date === selectedDate);
+            const stage =
+              stagesOnSelectedDate.length > 0 ? stagesOnSelectedDate[stagesOnSelectedDate.length - 1] : null;
+            return {
+              id: race.id,
+              stage,
+              progress: getStageProgressIndex(stages, stage),
+              total: stages.length,
+            };
           } catch {
             return null;
           }
         })
       );
       const map: Record<string, Stage | null> = {};
+      const progressMap: Record<string, number | null> = {};
       const countsMap: Record<string, number> = {};
       for (const entry of entries) {
         if (entry) {
           map[entry.id] = entry.stage;
+          progressMap[entry.id] = entry.progress;
           countsMap[entry.id] = entry.total;
         }
       }
       setStagesMap(map);
+      setStageProgressMap(progressMap);
       setStageCountsMap(countsMap);
     };
 
@@ -470,6 +483,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             races={filteredRaces}
             onPressRace={handleRacePress}
             stagesMap={stagesMap}
+            stageProgressMap={stageProgressMap}
             stageCountsMap={stageCountsMap}
             bottomPadding={showBottomShortcut ? TODAY_SHORTCUT_BOTTOM_PADDING : 28}
             onViewportHeightChange={setRacesViewportHeight}
