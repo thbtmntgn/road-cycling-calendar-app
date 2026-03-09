@@ -9,6 +9,8 @@ export enum RaceCategory {
   NationalChampionship = 'NationalChampionship',
   WomenNationalChampionship = 'WomenNationalChampionship',
   Continental = 'Continental',
+  JuniorMen = 'JuniorMen',
+  JuniorWomen = 'JuniorWomen',
 }
 
 // Gender types

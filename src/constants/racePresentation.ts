@@ -89,6 +89,8 @@ export const CATEGORY_PRESENTATION: Record<RaceCategory, RacePresentation> = {
     '#BEC8D8'
   ),
   [RaceCategory.Continental]: buildPresentation('Continental', 9, 3, '#F4A261'),
+  [RaceCategory.JuniorMen]: buildPresentation('Junior', 10, 3, '#34D399'),
+  [RaceCategory.JuniorWomen]: buildPresentation('Women Junior', 11, 3, '#6EE7B7'),
 };
 
 const DEFAULT_PRESENTATION = buildPresentation('Race', 99, 3, '#738497');

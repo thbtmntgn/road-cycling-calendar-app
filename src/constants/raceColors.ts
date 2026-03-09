@@ -28,6 +28,8 @@ export const CATEGORY_ACCENT_COLORS: Record<RaceCategory, CategoryAccentPalette>
   [RaceCategory.NationalChampionship]: { oneDay: '#A8B4C5', stage: '#8A98AB' },
   [RaceCategory.WomenNationalChampionship]: { oneDay: '#D7DEE9', stage: '#BEC8D8' },
   [RaceCategory.Continental]: { oneDay: '#F6B67A', stage: '#F4A261' },
+  [RaceCategory.JuniorMen]: { oneDay: '#6EE7B7', stage: '#34D399' },
+  [RaceCategory.JuniorWomen]: { oneDay: '#A7F3D0', stage: '#6EE7B7' },
 };
 
 const DEFAULT_CATEGORY_ACCENTS: CategoryAccentPalette = {

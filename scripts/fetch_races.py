@@ -145,8 +145,10 @@ def build_team_jersey_url(team_url: str) -> Optional[str]:
     return f"https://www.procyclingstats.com/images/shirts/bx/eb/{team_slug}.png"
 
 
-# For NC and WC, exclude non-senior and non-road-race events based on slug keywords
-NC_WC_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-mj", "-wj", "-jr", "junior", "-crit"]
+# For NC and WC, exclude non-road-race and U23 events based on slug keywords.
+# Junior races are no longer excluded here — they are categorised as JuniorMen/JuniorWomen
+# in fetch_race_details via the pcs_category check below.
+NC_WC_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-crit"]
 
 
 def parse_pcs_date(raw: str, year: int) -> str:
@@ -292,6 +294,10 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
             app_category = "WomenNationalChampionship"
     else:
         gender = "Men"
+
+    # Override category for junior races (detected via pcs_category)
+    if "junior" in pcs_category.lower():
+        app_category = "JuniorWomen" if gender == "Women" else "JuniorMen"
 
     result: dict = {
         "id": slug.replace("/", "-"),   # stable, unique string id

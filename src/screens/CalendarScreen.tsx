@@ -12,6 +12,7 @@ import {
 import dayjs from 'dayjs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateSelector from '../components/DateSelector';
 import RacesList from '../components/RacesList';
@@ -19,9 +20,14 @@ import UpcomingBigRacesList, {
   UpcomingBigRace,
   UpcomingBigRacesSection,
 } from '../components/UpcomingBigRacesList';
+import FilterScreen, {
+  FILTER_CATS,
+  CategoryFilter,
+  makeDefaultFilter,
+} from '../components/FilterScreen';
 import { getDateRange, getTodayDate } from '../utils/dateUtils';
 import { fetchRaces, getRacesForDate, filterRacesByGender, fetchStages } from '../api/racesApi';
-import { Race, Gender, Stage } from '../types';
+import { Race, Gender, RaceCategory, Stage } from '../types';
 import { CalendarStackParamList } from '../navigation/types';
 import {
   isGrandTourRace,
@@ -129,10 +135,13 @@ const getBigRaceType = (race: Race): UpcomingBigRace['type'] | null => {
 const getUpcomingBigRacesForGender = (
   races: Race[],
   gender: Gender,
-  referenceDate: string
+  referenceDate: string,
+  enabledCats: Set<RaceCategory> | null
 ): UpcomingBigRace[] => {
   const from = dayjs(referenceDate).startOf('day');
-  const racesForGender = filterRacesByGender(races, gender);
+  const racesForGender = filterRacesByGender(races, gender).filter(
+    (r) => !enabledCats || enabledCats.has(r.category)
+  );
 
   return racesForGender
     .map((race) => {
@@ -166,6 +175,8 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [filteredRaces, setFilteredRaces] = useState<Race[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedGender, setSelectedGender] = useState<Gender>(Gender.Men);
+  const [showFilter, setShowFilter] = useState(false);
+  const [savedFilter, setSavedFilter] = useState<CategoryFilter>(makeDefaultFilter);
   const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
   const [stageCountsMap, setStageCountsMap] = useState<Record<string, number>>({});
   const [racesViewportHeight, setRacesViewportHeight] = useState<number>(0);
@@ -191,19 +202,31 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     loadRaces();
   }, []);
 
-  // Filter races when date or gender filter changes
+  // Derive enabled categories for the selected gender from the saved filter
+  const enabledCatsForGender = useMemo(() => {
+    const gk = selectedGender === Gender.Men ? 'men' : 'women';
+    const cats = FILTER_CATS[gk];
+    const enabled = savedFilter[gk];
+    if (enabled.size === cats.length) return null; // all on — no filtering needed
+    return new Set(cats.filter((c) => enabled.has(c.label)).map((c) => c.category));
+  }, [savedFilter, selectedGender]);
+
+  // Filter races when date, gender, or category filter changes
   useEffect(() => {
     if (races.length === 0) {
       setFilteredRaces([]);
       return;
     }
 
-    let racesForDate = getRacesForDate(races, selectedDate);
+    let result = getRacesForDate(races, selectedDate);
+    result = filterRacesByGender(result, selectedGender);
 
-    racesForDate = filterRacesByGender(racesForDate, selectedGender);
+    if (enabledCatsForGender) {
+      result = result.filter((r) => enabledCatsForGender.has(r.category));
+    }
 
-    setFilteredRaces(racesForDate);
-  }, [races, selectedDate, selectedGender]);
+    setFilteredRaces(result);
+  }, [races, selectedDate, selectedGender, enabledCatsForGender]);
 
   // Fetch stages for all multi-day races visible on the selected date
   useEffect(() => {
@@ -251,8 +274,8 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
 
   const todayDate = getTodayDate();
   const upcomingBigRaces = useMemo(
-    () => getUpcomingBigRacesForGender(races, selectedGender, todayDate),
-    [races, selectedGender, todayDate]
+    () => getUpcomingBigRacesForGender(races, selectedGender, todayDate, enabledCatsForGender),
+    [races, selectedGender, todayDate, enabledCatsForGender]
   );
   const emptyDayUpcomingBigRaces = useMemo(
     () => upcomingBigRaces.slice(0, UPCOMING_BIG_RACES_EMPTY_DAY_LIMIT),
@@ -283,6 +306,12 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const showTodayShortcut =
     Math.abs(dayjs(selectedDate).diff(dayjs(todayDate), 'day')) >= TODAY_SHORTCUT_THRESHOLD_DAYS;
   const showBottomShortcut = showTodayShortcut;
+
+  const isDefault =
+    savedFilter.men.size === FILTER_CATS.men.length &&
+    savedFilter.women.size === FILTER_CATS.women.length;
+
+  const genderKey = selectedGender === Gender.Men ? 'men' : 'women';
 
   const handleTodayPress = () => {
     setDates((currentDates) =>
@@ -337,6 +366,11 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     [handleDaySwipe]
   );
 
+  const handleFilterSave = useCallback((newFilters: CategoryFilter) => {
+    setSavedFilter({ men: new Set(newFilters.men), women: new Set(newFilters.women) });
+    setShowFilter(false);
+  }, []);
+
   const handleRacePress = (race: Race) => {
     navigation.navigate('RaceDetail', { race, selectedDate });
   };
@@ -367,48 +401,75 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               </View>
             </View>
-            <View style={styles.genderToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  selectedGender === Gender.Men && styles.genderButtonActive,
-                ]}
-                onPress={() => setSelectedGender(Gender.Men)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Show men's races"
-              >
-                <Text
+            <View style={styles.heroControls}>
+              <View style={styles.genderToggle}>
+                <TouchableOpacity
                   style={[
-                    styles.genderSymbol,
-                    { color: selectedGender === Gender.Men ? '#FFFFFF' : 'rgba(255,255,255,0.24)' },
+                    styles.genderButton,
+                    selectedGender === Gender.Men && styles.genderButtonActive,
                   ]}
+                  onPress={() => setSelectedGender(Gender.Men)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show men's races"
                 >
-                  ♂
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  selectedGender === Gender.Women && styles.genderButtonActive,
-                ]}
-                onPress={() => setSelectedGender(Gender.Women)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Show women's races"
-              >
-                <Text
+                  <Text
+                    style={[
+                      styles.genderSymbol,
+                      { color: selectedGender === Gender.Men ? '#FFFFFF' : 'rgba(255,255,255,0.24)' },
+                    ]}
+                  >
+                    ♂
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[
-                    styles.genderSymbol,
-                    { color: selectedGender === Gender.Women ? '#FFFFFF' : 'rgba(255,255,255,0.24)' },
+                    styles.genderButton,
+                    selectedGender === Gender.Women && styles.genderButtonActive,
                   ]}
+                  onPress={() => setSelectedGender(Gender.Women)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show women's races"
                 >
-                  ♀
-                </Text>
+                  <Text
+                    style={[
+                      styles.genderSymbol,
+                      { color: selectedGender === Gender.Women ? '#FFFFFF' : 'rgba(255,255,255,0.24)' },
+                    ]}
+                  >
+                    ♀
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={styles.filterBtn}
+                onPress={() => setShowFilter(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Filter race categories"
+              >
+                <MaterialCommunityIcons
+                  name="filter-variant"
+                  size={18}
+                  color={isDefault ? 'rgba(255,255,255,0.45)' : '#F5C842'}
+                />
+                {!isDefault && <View style={styles.filterDot} />}
               </TouchableOpacity>
             </View>
           </View>
           <Text style={styles.subtitle}>{summaryLabel}</Text>
+          {!isDefault && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>
+                {savedFilter[genderKey].size} of {FILTER_CATS[genderKey].length} categories
+              </Text>
+              <Text style={styles.filterBadgeSep}>·</Text>
+              <TouchableOpacity onPress={() => setShowFilter(true)} activeOpacity={0.7}>
+                <Text style={styles.filterBadgeEdit}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.dateSelectorWrap}>
@@ -472,6 +533,14 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
           </>
         ) : null}
       </View>
+
+      <FilterScreen
+        visible={showFilter}
+        activeGender={selectedGender}
+        savedFilters={savedFilter}
+        onSave={handleFilterSave}
+        onClose={() => setShowFilter(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -550,14 +619,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2.3,
   },
-  subtitle: {
-    marginTop: 8,
-    color: '#71717A',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  dateSelectorWrap: {
-    marginBottom: 16,
+  heroControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   genderToggle: {
     flexDirection: 'row',
@@ -589,6 +654,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.30)',
+  },
+  filterBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#F5C842',
+    borderWidth: 1.5,
+    borderColor: '#0A0A0C',
+  },
+  subtitle: {
+    marginTop: 8,
+    color: '#71717A',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  filterBadgeText: {
+    color: '#F5C842',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  filterBadgeSep: {
+    color: '#3F3F46',
+    fontSize: 11,
+  },
+  filterBadgeEdit: {
+    color: '#52525B',
+    fontSize: 11,
+  },
+  dateSelectorWrap: {
+    marginBottom: 16,
   },
   loadingContainer: {
     flex: 1,
