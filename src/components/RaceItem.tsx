@@ -12,7 +12,6 @@ import {
   StageTypeKey,
 } from '../constants/raceColors';
 import {
-  getRacePresentation,
   isGrandTourRace,
   isMajorTourRace,
   isMonumentRace,
@@ -88,16 +87,6 @@ const StageTypeTag: React.FC<{ type: StageTypeKey }> = ({ type }) => {
   );
 };
 
-// ─── CategoryTag ──────────────────────────────────────────────────────────────
-
-const CategoryTag: React.FC<{ label: string; color: string }> = ({ label, color }) => (
-  <View style={[tagStyles.tag, { backgroundColor: color + '14', borderColor: color + '35' }]}>
-    <Text numberOfLines={1} style={[tagStyles.text, { color }]}>
-      {label}
-    </Text>
-  </View>
-);
-
 const tagStyles = StyleSheet.create({
   tag: {
     flexDirection: 'row',
@@ -126,16 +115,44 @@ const RACE_TIER_BADGE_CONFIG: Record<RaceTierBadgeType, { icon: MCIName }> = {
   'top-classic': { icon: 'star-four-points-outline' },
 };
 
-const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType }> = ({ tier }) => {
+const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType; compact?: boolean }> = ({
+  tier,
+  compact = false,
+}) => {
   const { icon } = RACE_TIER_BADGE_CONFIG[tier];
   const colors = RACE_SUBGROUP_COLORS[tier];
   return (
-    <View style={[tagStyles.tag, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-      <MaterialCommunityIcons name={icon} size={11} color={colors.text} />
-      <Text style={[tagStyles.text, { color: colors.text }]}>{colors.label}</Text>
+    <View
+      style={[
+        tagStyles.tag,
+        compact && badgeStyles.compactTag,
+        { backgroundColor: colors.bg, borderColor: colors.border },
+      ]}
+    >
+      <MaterialCommunityIcons name={icon} size={compact ? 10 : 11} color={colors.text} />
+      <Text
+        style={[
+          tagStyles.text,
+          compact && badgeStyles.compactText,
+          { color: colors.text },
+        ]}
+      >
+        {colors.label}
+      </Text>
     </View>
   );
 };
+
+const badgeStyles = StyleSheet.create({
+  compactTag: {
+    paddingHorizontal: 7,
+    gap: 3,
+  },
+  compactText: {
+    fontSize: 9,
+    letterSpacing: 0.35,
+  },
+});
 
 // ─── HorizontalProgressBar ────────────────────────────────────────────────────
 
@@ -216,7 +233,6 @@ const progressBarStyles = StyleSheet.create({
 
 const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalStages }) => {
   const isOneDay = race.startDate === race.endDate;
-  const presentation = getRacePresentation(race.category);
   const categoryColor = getCategoryAccentColor(race.category, isOneDay);
   const isRestDay = !isOneDay && currentStage === null;
   const hasActiveStage = !isOneDay && currentStage != null;
@@ -305,30 +321,27 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
           </View>
         ) : null}
 
-        {/* Row 3: data chips (left) + category tag (right) */}
-        <View style={styles.bottomRow}>
-          <View style={styles.chipsWrap}>
-            {startTime ? (
-              <View style={styles.chip}>
-                <MaterialCommunityIcons name="clock-outline" size={11} color="#8B93A1" />
-                <Text style={styles.chipText}>{startTime}</Text>
-              </View>
-            ) : null}
-            {distance && distance > 0 ? (
-              <View style={styles.chip}>
-                <MaterialCommunityIcons name="road" size={11} color="#8B93A1" />
-                <Text style={styles.chipText}>{distance} km</Text>
-              </View>
-            ) : null}
-            {elevation && elevation > 0 ? (
-              <View style={styles.chip}>
-                <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
-                <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
-              </View>
-            ) : null}
-            {raceTier ? <RaceTierBadge tier={raceTier} /> : null}
-          </View>
-          <CategoryTag label={presentation.label} color={categoryColor} />
+        {/* Row 3: race-specific data chips */}
+        <View style={styles.chipsWrap}>
+          {startTime ? (
+            <View style={styles.chip}>
+              <MaterialCommunityIcons name="clock-outline" size={11} color="#8B93A1" />
+              <Text style={styles.chipText}>{startTime}</Text>
+            </View>
+          ) : null}
+          {distance && distance > 0 ? (
+            <View style={styles.chip}>
+              <MaterialCommunityIcons name="road" size={11} color="#8B93A1" />
+              <Text style={styles.chipText}>{distance} km</Text>
+            </View>
+          ) : null}
+          {elevation && elevation > 0 ? (
+            <View style={styles.chip}>
+              <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
+              <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
+            </View>
+          ) : null}
+          {raceTier ? <RaceTierBadge tier={raceTier} compact /> : null}
         </View>
       </View>
     </TouchableOpacity>
@@ -390,16 +403,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
   },
-  bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   chipsWrap: {
-    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 5,
     alignItems: 'center',
   },
   chip: {
@@ -409,13 +416,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2A2A31',
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     borderRadius: 7,
     gap: 4,
   },
   chipText: {
     color: '#D1D5DB',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
 });

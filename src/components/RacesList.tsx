@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import RaceItem from './RaceItem';
-import { getRacePresentation } from '../constants/racePresentation';
+import { getRacePresentation, RacePresentation } from '../constants/racePresentation';
 import { Race, Stage } from '../types';
 
 interface RacesListProps {
@@ -29,6 +29,34 @@ const sortRacesByCategoryPriority = (races: Race[]): Race[] =>
     return a.name.localeCompare(b.name);
   });
 
+interface RaceGroup {
+  category: Race['category'];
+  presentation: RacePresentation;
+  races: Race[];
+}
+
+const groupRacesByCategory = (races: Race[]): RaceGroup[] => {
+  const sortedRaces = sortRacesByCategoryPriority(races);
+  const groups: RaceGroup[] = [];
+
+  sortedRaces.forEach((race) => {
+    const lastGroup = groups[groups.length - 1];
+
+    if (lastGroup && lastGroup.category === race.category) {
+      lastGroup.races.push(race);
+      return;
+    }
+
+    groups.push({
+      category: race.category,
+      presentation: getRacePresentation(race.category),
+      races: [race],
+    });
+  });
+
+  return groups;
+};
+
 const RacesList: React.FC<RacesListProps> = ({
   races,
   showEmptyMessage = true,
@@ -40,7 +68,7 @@ const RacesList: React.FC<RacesListProps> = ({
   onViewportHeightChange,
   onMainContentHeightChange,
 }) => {
-  const sortedRaces = React.useMemo(() => sortRacesByCategoryPriority(races), [races]);
+  const groupedRaces = React.useMemo(() => groupRacesByCategory(races), [races]);
 
   if (races.length === 0 && showEmptyMessage) {
     return (
@@ -58,15 +86,45 @@ const RacesList: React.FC<RacesListProps> = ({
       onLayout={(event) => onViewportHeightChange?.(event.nativeEvent.layout.height)}
     >
       <View onLayout={(event) => onMainContentHeightChange?.(event.nativeEvent.layout.height)}>
-        <View style={styles.raceItemsContainer}>
-          {sortedRaces.map((race) => (
-            <RaceItem
-              key={race.id}
-              race={race}
-              onPress={onPressRace ? () => onPressRace(race) : undefined}
-              currentStage={stagesMap ? stagesMap[race.id] : undefined}
-              totalStages={stageCountsMap?.[race.id]}
-            />
+        <View style={styles.sectionsContainer}>
+          {groupedRaces.map((group) => (
+            <View key={group.category} style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View
+                  style={[
+                    styles.sectionMarker,
+                    { backgroundColor: group.presentation.accentColor },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: group.presentation.accentColor },
+                  ]}
+                >
+                  {group.presentation.label.toUpperCase()}
+                </Text>
+                <View
+                  style={[
+                    styles.sectionDivider,
+                    { backgroundColor: `${group.presentation.accentColor}24` },
+                  ]}
+                />
+                <Text style={styles.sectionCount}>{group.races.length}</Text>
+              </View>
+
+              <View style={styles.raceItemsContainer}>
+                {group.races.map((race) => (
+                  <RaceItem
+                    key={race.id}
+                    race={race}
+                    onPress={onPressRace ? () => onPressRace(race) : undefined}
+                    currentStage={stagesMap ? stagesMap[race.id] : undefined}
+                    totalStages={stageCountsMap?.[race.id]}
+                  />
+                ))}
+              </View>
+            </View>
           ))}
         </View>
       </View>
@@ -85,6 +143,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
   },
+  sectionsContainer: {
+    gap: 18,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -98,6 +159,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  section: {
+    gap: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  sectionMarker: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    flexShrink: 0,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  sectionDivider: {
+    flex: 1,
+    height: 1,
+  },
+  sectionCount: {
+    color: '#3F3F46',
+    fontSize: 10,
+    fontWeight: '700',
   },
   raceItemsContainer: {
     gap: 10,
