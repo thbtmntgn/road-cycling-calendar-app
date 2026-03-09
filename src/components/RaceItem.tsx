@@ -41,9 +41,9 @@ const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; label: string }> 
 };
 
 const SIDEBAR_WIDTH = 56;
-const BAR_HEIGHT = 52;
-const DOT_SIZE = 5;
-const DOT_GAP = 4;
+const BAR_HEIGHT = 44;
+const DOT_SIZE = 7;
+const DOT_GAP = 3;
 
 // ─── StageTypeTag ────────────────────────────────────────────────────────────
 
@@ -265,7 +265,6 @@ const progressStyles = StyleSheet.create({
   dotsContainer: {
     alignItems: 'center',
     gap: DOT_GAP,
-    marginTop: 8,
   },
   dot: {
     width: DOT_SIZE,
@@ -280,7 +279,6 @@ const progressStyles = StyleSheet.create({
     shadowOpacity: 0.65,
   },
   barContainer: {
-    marginTop: 8,
     alignItems: 'center',
   },
   barTrack: {
@@ -353,6 +351,7 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
         <View style={sidebarStyles.centered}>
           <Text style={[sidebarStyles.oneDayNum, { color: categoryColor }]}>1</Text>
           <Text style={[sidebarStyles.oneDayLabel, { color: categoryColor }]}>Day</Text>
+          <Text style={[sidebarStyles.oneDayLabel, { color: categoryColor }]}>Race</Text>
         </View>
       );
     }
@@ -369,18 +368,22 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
     if (hasActiveStage) {
       const sn = currentStage!.stageNumber;
       const progressCurrent = sn === 0 ? 1 : sn;
-      const stageLabel = sn === 0 ? 'Prologue' : 'Stage';
-      const stageValue = totalStages ? `${progressCurrent} / ${totalStages}` : String(progressCurrent);
+      const stageLabelLines = sn === 0 ? ['Prologue'] : ['Stage', 'Race'];
+      const stageValue = totalStages ? `${progressCurrent}/${totalStages}` : String(progressCurrent);
 
       return (
-        <View style={sidebarStyles.centered}>
+        <View style={sidebarStyles.centeredStage}>
           <View style={sidebarStyles.stageBlock}>
-            <Text style={[sidebarStyles.stageLabel, { color: categoryColor }]}>{stageLabel}</Text>
-            <Text style={[sidebarStyles.stageValue, { color: categoryColor }]}>{stageValue}</Text>
+            {stageLabelLines.map((label) => (
+              <Text key={label} style={[sidebarStyles.stageLabel, { color: categoryColor }]}>
+                {label}
+              </Text>
+            ))}
           </View>
           {totalStages ? (
             <SidebarProgress current={progressCurrent} total={totalStages} color={categoryColor} />
           ) : null}
+          <Text style={[sidebarStyles.stageValue, { color: categoryColor }]}>{stageValue}</Text>
         </View>
       );
     }
@@ -462,14 +465,20 @@ const sidebarStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  centeredStage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   oneDayNum: {
-    fontSize: 18,
+    fontSize: 11,
     fontWeight: '800',
-    lineHeight: 20,
+    lineHeight: 13,
   },
   oneDayLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
+    lineHeight: 13,
     letterSpacing: 0.8,
     opacity: 0.9,
     textTransform: 'uppercase',
@@ -478,25 +487,29 @@ const sidebarStyles = StyleSheet.create({
     alignItems: 'center',
   },
   stageLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
+    lineHeight: 13,
     letterSpacing: 0.8,
     opacity: 0.9,
     textTransform: 'uppercase',
   },
   stageValue: {
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: '800',
-    lineHeight: 20,
+    lineHeight: 15,
+    letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
   },
   restDash: {
-    fontSize: 18,
+    fontSize: 11,
     color: '#5A5A63',
-    lineHeight: 20,
+    lineHeight: 13,
   },
   restLabel: {
     marginTop: 4,
-    fontSize: 8,
+    fontSize: 11,
     fontWeight: '700',
     color: '#6B7280',
     textTransform: 'uppercase',
@@ -518,7 +531,6 @@ const styles = StyleSheet.create({
     borderRightWidth: 3,
     paddingVertical: 16,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
