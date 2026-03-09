@@ -60,7 +60,12 @@ export const RACE_TYPE_COLORS: Record<StageTypeKey, BadgePalette> = {
     bg: 'rgba(248,113,113,0.12)',
     border: 'rgba(248,113,113,0.35)',
   },
-  tt: {
+  itt: {
+    text: '#A78BFA',
+    bg: 'rgba(167,139,250,0.12)',
+    border: 'rgba(167,139,250,0.35)',
+  },
+  ttt: {
     text: '#A78BFA',
     bg: 'rgba(167,139,250,0.12)',
     border: 'rgba(167,139,250,0.35)',

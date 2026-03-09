@@ -61,7 +61,7 @@ export interface Race {
   arrival?: string;   // one-day races only
   distance?: number;  // km, only set for one-day races
   startTime?: string; // "HH:MM", one-day races only
-  stageType?: 'flat' | 'hilly' | 'mountain' | 'tt'; // one-day races only
+  stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt'; // one-day races only
   elevation?: number; // vertical metres, one-day races only
 }
 
@@ -85,7 +85,7 @@ export interface Stage {
   arrival: string;
   distance: number;    // km
   startTime?: string;  // "HH:MM"
-  stageType?: 'flat' | 'hilly' | 'mountain' | 'tt';
+  stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt';
   elevation?: number;  // vertical metres
 }
 

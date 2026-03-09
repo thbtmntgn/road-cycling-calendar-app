@@ -14,9 +14,6 @@ import {
 } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
-  getEnabledRaceFilterCount,
-  isDefaultRaceFilterState,
-  makeDefaultRaceFilterState,
   RACE_FILTER_DEFINITIONS,
   RaceFilterState,
 } from '../constants/raceFilters';
@@ -32,7 +29,6 @@ interface Props {
 interface FilterScreenBodyProps {
   local: RaceFilterState;
   toggle: (group: RaceFilterGroup) => void;
-  onReset: () => void;
   onSave: (filters: RaceFilterState) => void;
   onClose: () => void;
 }
@@ -40,13 +36,10 @@ interface FilterScreenBodyProps {
 const FilterScreenBody: React.FC<FilterScreenBodyProps> = ({
   local,
   toggle,
-  onReset,
   onSave,
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
-  const enabledCount = getEnabledRaceFilterCount(local);
-  const isDefault = isDefaultRaceFilterState(local);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -56,13 +49,7 @@ const FilterScreenBody: React.FC<FilterScreenBodyProps> = ({
         </TouchableOpacity>
         <View style={styles.headerMid}>
           <Text style={styles.headerTitle}>Race Levels</Text>
-          <Text style={styles.headerSub}>Applied after gender filtering</Text>
         </View>
-        <TouchableOpacity onPress={onReset} activeOpacity={0.7} disabled={isDefault}>
-          <Text style={[styles.resetText, isDefault && styles.resetTextDisabled]}>
-            Reset
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
@@ -90,12 +77,6 @@ const FilterScreenBody: React.FC<FilterScreenBodyProps> = ({
       </ScrollView>
 
       <View style={styles.footer}>
-        <View style={styles.statusCard}>
-          <Text style={styles.statusLabel}>ACTIVE FILTERS</Text>
-          <Text style={styles.statusValue}>
-            {enabledCount} of {RACE_FILTER_DEFINITIONS.length} race levels enabled
-          </Text>
-        </View>
         <TouchableOpacity style={styles.saveBtn} onPress={() => onSave(local)} activeOpacity={0.85}>
           <Text style={styles.saveBtnText}>SAVE PREFERENCES</Text>
         </TouchableOpacity>
@@ -124,7 +105,6 @@ const FilterScreenModalBody: React.FC<Omit<Props, 'visible'>> = ({
         <FilterScreenBody
           local={local}
           toggle={toggle}
-          onReset={() => setLocal(makeDefaultRaceFilterState())}
           onSave={onSave}
           onClose={onClose}
         />
@@ -168,19 +148,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.4,
   },
-  headerSub: {
-    color: '#52525B',
-    fontSize: 11,
-    marginTop: 1,
-  },
-  resetText: {
-    color: '#F5C842',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  resetTextDisabled: {
-    color: '#3F3F46',
-  },
   list: {
     flex: 1,
   },
@@ -222,29 +189,10 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 16,
     borderTopWidth: 1,
     borderTopColor: '#141418',
-    gap: 14,
-  },
-  statusCard: {
-    backgroundColor: '#0F0F12',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#141418',
-  },
-  statusLabel: {
-    color: '#F5C842',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  statusValue: {
-    color: '#D4D4D8',
-    fontSize: 12,
   },
   saveBtn: {
     padding: 14,

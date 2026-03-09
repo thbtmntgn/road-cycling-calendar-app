@@ -72,7 +72,8 @@ const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; label: string }> 
   flat: { icon: 'minus', label: 'Flat' },
   hilly: { icon: 'chart-bell-curve', label: 'Hilly' },
   mountain: { icon: 'image-filter-hdr', label: 'Mountain' },
-  tt: { icon: 'timer-outline', label: 'TT' },
+  itt: { icon: 'timer-outline', label: 'ITT' },
+  ttt: { icon: 'timer-outline', label: 'TTT' },
 };
 
 const StageTypeTag: React.FC<{ type: StageTypeKey }> = ({ type }) => {
@@ -124,16 +125,20 @@ const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType; compact?: boolean }> = 
   return (
     <View
       style={[
-        tagStyles.tag,
-        compact && badgeStyles.compactTag,
+        compact ? badgeStyles.compactTag : tagStyles.tag,
         { backgroundColor: colors.bg, borderColor: colors.border },
       ]}
     >
-      <MaterialCommunityIcons name={icon} size={compact ? 10 : 11} color={colors.text} />
+      {compact ? (
+        <View style={badgeStyles.compactIconWrap}>
+          <MaterialCommunityIcons name={icon} size={10} color={colors.text} />
+        </View>
+      ) : (
+        <MaterialCommunityIcons name={icon} size={11} color={colors.text} />
+      )}
       <Text
         style={[
-          tagStyles.text,
-          compact && badgeStyles.compactText,
+          compact ? badgeStyles.compactText : tagStyles.text,
           { color: colors.text },
         ]}
       >
@@ -145,12 +150,26 @@ const RaceTierBadge: React.FC<{ tier: RaceTierBadgeType; compact?: boolean }> = 
 
 const badgeStyles = StyleSheet.create({
   compactTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
     paddingHorizontal: 7,
-    gap: 3,
+    borderRadius: 7,
+    borderWidth: 1,
+    gap: 4,
+  },
+  compactIconWrap: {
+    width: 11,
+    height: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   compactText: {
-    fontSize: 9,
-    letterSpacing: 0.35,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
 });
 

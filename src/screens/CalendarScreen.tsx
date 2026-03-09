@@ -22,7 +22,6 @@ import UpcomingBigRacesList, {
 } from '../components/UpcomingBigRacesList';
 import FilterScreen from '../components/FilterScreen';
 import {
-  isDefaultRaceFilterState,
   isRaceVisibleForFilterState,
   makeDefaultRaceFilterState,
   RaceFilterState,
@@ -297,8 +296,6 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     Math.abs(dayjs(selectedDate).diff(dayjs(todayDate), 'day')) >= TODAY_SHORTCUT_THRESHOLD_DAYS;
   const showBottomShortcut = showTodayShortcut;
 
-  const isDefault = isDefaultRaceFilterState(savedFilter);
-
   const handleTodayPress = () => {
     setDates((currentDates) =>
       currentDates.includes(todayDate)
@@ -436,9 +433,8 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
                 <MaterialCommunityIcons
                   name="filter-variant"
                   size={18}
-                  color={isDefault ? 'rgba(255,255,255,0.45)' : '#F5C842'}
+                  color="rgba(255,255,255,0.45)"
                 />
-                {!isDefault && <View style={styles.filterDot} />}
               </TouchableOpacity>
             </View>
           </View>
@@ -635,17 +631,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-  },
-  filterDot: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#F5C842',
-    borderWidth: 1.5,
-    borderColor: '#0A0A0C',
   },
   dateSelectorWrap: {
     marginBottom: 16,

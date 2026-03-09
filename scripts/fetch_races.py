@@ -255,8 +255,10 @@ def fetch_race_slugs(
 
 def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[str]:
     """Map PCS stage_type / profile_icon fields to app stageType values."""
-    if stage_type_str in ("ITT", "TTT"):
-        return "tt"
+    if stage_type_str == "ITT":
+        return "itt"
+    if stage_type_str == "TTT":
+        return "ttt"
     icon = profile_icon_str or ""
     if icon in ("p0", "p1"):
         return "flat"
