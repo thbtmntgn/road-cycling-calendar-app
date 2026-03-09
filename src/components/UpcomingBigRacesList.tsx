@@ -23,6 +23,7 @@ interface UpcomingBigRacesListProps {
   selectedDate: string;
   onPressRace?: (race: Race) => void;
   bottomPadding?: number;
+  filteredOutByFilters?: boolean;
 }
 
 const countryToFlag = (code: string): string => {
@@ -57,20 +58,26 @@ const getOrdinalSuffix = (day: number): string => {
   return 'th';
 };
 
-const getNoRacesLabel = (selectedDate: string): string => {
+const getNoRacesLabel = (selectedDate: string, filteredOutByFilters = false): string => {
   const targetDate = dayjs(selectedDate).startOf('day');
   const today = dayjs().startOf('day');
 
   if (targetDate.isSame(today, 'day')) {
-    return 'No races today.';
+    return filteredOutByFilters
+      ? 'No races today with current filters.'
+      : 'No races today.';
   }
 
   if (targetDate.isSame(today.add(1, 'day'), 'day')) {
-    return 'No races tomorrow.';
+    return filteredOutByFilters
+      ? 'No races tomorrow with current filters.'
+      : 'No races tomorrow.';
   }
 
   const day = targetDate.date();
-  return `No races on ${targetDate.format('MMMM')} ${day}${getOrdinalSuffix(day)}.`;
+  return filteredOutByFilters
+    ? `No races on ${targetDate.format('MMMM')} ${day}${getOrdinalSuffix(day)} with current filters.`
+    : `No races on ${targetDate.format('MMMM')} ${day}${getOrdinalSuffix(day)}.`;
 };
 
 export const UpcomingBigRacesSection: React.FC<UpcomingBigRacesSectionProps> = ({
@@ -141,6 +148,7 @@ const UpcomingBigRacesList: React.FC<UpcomingBigRacesListProps> = ({
   selectedDate,
   onPressRace,
   bottomPadding = 28,
+  filteredOutByFilters = false,
 }) => {
   return (
     <ScrollView
@@ -149,7 +157,9 @@ const UpcomingBigRacesList: React.FC<UpcomingBigRacesListProps> = ({
     >
       <View style={styles.emptyState}>
         <MaterialCommunityIcons name="bicycle" size={26} color="rgba(255,255,255,0.28)" />
-        <Text style={styles.emptyStateTitle}>{getNoRacesLabel(selectedDate)}</Text>
+        <Text style={styles.emptyStateTitle}>
+          {getNoRacesLabel(selectedDate, filteredOutByFilters)}
+        </Text>
       </View>
 
       <View style={styles.upcomingSection}>

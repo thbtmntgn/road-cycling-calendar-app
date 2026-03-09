@@ -262,6 +262,10 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   const todayDate = getTodayDate();
+  const racesOnSelectedDate = useMemo(
+    () => getRacesForDate(races, selectedDate),
+    [races, selectedDate]
+  );
   const upcomingBigRaces = useMemo(
     () => getUpcomingBigRacesForGender(races, selectedGender, todayDate, savedFilter),
     [races, savedFilter, selectedGender, todayDate]
@@ -295,6 +299,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const showTodayShortcut =
     Math.abs(dayjs(selectedDate).diff(dayjs(todayDate), 'day')) >= TODAY_SHORTCUT_THRESHOLD_DAYS;
   const showBottomShortcut = showTodayShortcut;
+  const isEmptyBecauseOfFilters = racesOnSelectedDate.length > 0 && filteredRaces.length === 0;
 
   const handleTodayPress = () => {
     setDates((currentDates) =>
@@ -458,6 +463,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             selectedDate={selectedDate}
             onPressRace={handleUpcomingRacePress}
             bottomPadding={showBottomShortcut ? TODAY_SHORTCUT_BOTTOM_PADDING : 28}
+            filteredOutByFilters={isEmptyBecauseOfFilters}
           />
         ) : (
           <RacesList
