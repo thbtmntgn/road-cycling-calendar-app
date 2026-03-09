@@ -34,7 +34,7 @@ React Native + Expo app for tracking professional cycling races. Uses stack navi
 
 - `Race.category()` returns `'Men Elite'` or `'Woman Elite'` (singular) for gender detection
 - WWT races are always Women regardless of `category()` return value
-- Included: WorldTour (UWT/WWT), WorldChampionship (WC), ProSeries (Pro), NationalChampionship (NC), Continental (1.1/2.1); excluded: 1.2/2.2
+- Included: WorldTour (UWT/WWT), WorldChampionship (WC), ProSeries (Pro), NationalChampionship (NC), Continental (1.1/2.1/1.2/2.2) — all UCI-registered races
 - NC and WC are filtered to senior road races only — slugs with `-itt`, `u23`, `-mj`, `-wj`, `-jr`, `junior`, `-crit` are skipped
 - Date pre-filtering happens in `fetch_race_slugs` by parsing the date from the races.php table (avoids HTTP requests for out-of-range races)
 - One-day race distance: `Stage(f"{slug}/result").distance()` — `Race.stages()` returns empty for one-day races

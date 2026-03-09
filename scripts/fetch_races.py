@@ -55,8 +55,10 @@ UCI_TOUR_TO_CATEGORY = {
     "1.PRO": "ProSeries",    # alternate capitalisation seen on PCS
     "2.PRO": "ProSeries",
     "NC":    "NationalChampionship",
-    "1.1":   "Continental",  # UCI Continental one-day
-    "2.1":   "Continental",  # UCI Continental stage race
+    "1.1":   "Continental",  # UCI Continental one-day (higher tier)
+    "2.1":   "Continental",  # UCI Continental stage race (higher tier)
+    "1.2":   "Continental",  # UCI Continental one-day (lower tier)
+    "2.2":   "Continental",  # UCI Continental stage race (lower tier)
 }
 
 # Gender override for WWT races (PCS category() sometimes says "Men Elite" for
