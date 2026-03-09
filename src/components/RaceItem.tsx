@@ -305,6 +305,7 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
 
   const showProgressBar = hasActiveStage && totalStages != null && stageNum != null;
   const hasRoute = !!(departure || arrival);
+  const hasBottomRightTierBadge = raceTier === 'major-tour';
 
   return (
     <TouchableOpacity
@@ -341,26 +342,34 @@ const RaceItem: React.FC<RaceItemProps> = ({ race, onPress, currentStage, totalS
         ) : null}
 
         {/* Row 3: race-specific data chips */}
-        <View style={styles.chipsWrap}>
-          {startTime ? (
-            <View style={styles.chip}>
-              <MaterialCommunityIcons name="clock-outline" size={11} color="#8B93A1" />
-              <Text style={styles.chipText}>{startTime}</Text>
+        <View style={styles.chipsRow}>
+          <View style={styles.chipsWrap}>
+            {startTime ? (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name="clock-outline" size={11} color="#8B93A1" />
+                <Text style={styles.chipText}>{startTime}</Text>
+              </View>
+            ) : null}
+            {distance && distance > 0 ? (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name="road" size={11} color="#8B93A1" />
+                <Text style={styles.chipText}>{distance} km</Text>
+              </View>
+            ) : null}
+            {elevation && elevation > 0 ? (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
+                <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
+              </View>
+            ) : null}
+            {raceTier && !hasBottomRightTierBadge ? <RaceTierBadge tier={raceTier} compact /> : null}
+          </View>
+
+          {raceTier && hasBottomRightTierBadge ? (
+            <View style={styles.trailingBadgeWrap}>
+              <RaceTierBadge tier={raceTier} compact />
             </View>
           ) : null}
-          {distance && distance > 0 ? (
-            <View style={styles.chip}>
-              <MaterialCommunityIcons name="road" size={11} color="#8B93A1" />
-              <Text style={styles.chipText}>{distance} km</Text>
-            </View>
-          ) : null}
-          {elevation && elevation > 0 ? (
-            <View style={styles.chip}>
-              <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
-              <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
-            </View>
-          ) : null}
-          {raceTier ? <RaceTierBadge tier={raceTier} compact /> : null}
         </View>
       </View>
     </TouchableOpacity>
@@ -422,11 +431,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
   },
+  chipsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 5,
+  },
   chipsWrap: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 5,
     alignItems: 'center',
+  },
+  trailingBadgeWrap: {
+    flexShrink: 0,
   },
   chip: {
     flexDirection: 'row',
