@@ -226,6 +226,26 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       },
     }),
   ).current;
+  // Screen-level swipe gesture for stage date navigation
+  const screenSwipeRef = useRef({ prevDate: null as string | null, nextDate: null as string | null, activeTab: 'profile' as DetailTab });
+  const screenSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => {
+        if (!isStageRace || screenSwipeRef.current.activeTab === 'startlist') return false;
+        const h = Math.abs(gs.dx);
+        const v = Math.abs(gs.dy);
+        return h > 14 && h > v * 1.3;
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (!isStageRace || screenSwipeRef.current.activeTab === 'startlist') return;
+        if (Math.abs(gs.dy) > 72 || Math.abs(gs.dx) < 56) return;
+        const { prevDate, nextDate } = screenSwipeRef.current;
+        if (gs.dx < 0 && nextDate) setCurrentDate(nextDate);
+        else if (gs.dx > 0 && prevDate) setCurrentDate(prevDate);
+      },
+    })
+  ).current;
+
   const teamTabsRef = useRef<FlatList<StartlistTeam>>(null);
   const raceCompleted = !dayjs(currentDate).isAfter(dayjs(), 'day');
   const [activeTab, setActiveTab] = useState<DetailTab>(raceCompleted ? 'results' : 'profile');
@@ -239,6 +259,9 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const nextStageDate =
     currentDateIndex < sortedUniqueDates.length - 1 ? sortedUniqueDates[currentDateIndex + 1] : null;
   stagePanState.current = { prevDate: prevStageDate, nextDate: nextStageDate };
+  screenSwipeRef.current.prevDate = prevStageDate;
+  screenSwipeRef.current.nextDate = nextStageDate;
+  screenSwipeRef.current.activeTab = activeTab;
   const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === currentDate);
   const stageOnSelectedDate =
     stagesOnSelectedDate.length > 0 ? stagesOnSelectedDate[stagesOnSelectedDate.length - 1] : null;
@@ -683,7 +706,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <View style={styles.container}>
+      <View style={styles.container} {...screenSwipeResponder.panHandlers}>
         <Animated.View
           style={{ transform: [{ translateX: stageDragX }] }}
           {...(isStageRace ? stagePanResponder.panHandlers : {})}
