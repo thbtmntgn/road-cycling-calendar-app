@@ -196,8 +196,8 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       onPanResponderMove: (_, gs) => stageDragX.setValue(gs.dx),
       onPanResponderRelease: (_, gs) => {
         const { prevDate, nextDate } = stagePanState.current;
-        if (gs.dx < -60 && prevDate) setCurrentDate(prevDate);
-        else if (gs.dx > 60 && nextDate) setCurrentDate(nextDate);
+        if (gs.dx < -60 && nextDate) setCurrentDate(nextDate);
+        else if (gs.dx > 60 && prevDate) setCurrentDate(prevDate);
         Animated.spring(stageDragX, { toValue: 0, useNativeDriver: false }).start();
       },
     }),
