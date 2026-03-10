@@ -170,8 +170,8 @@ const TeamJersey: React.FC<TeamJerseyProps> = ({ uri }) => {
 
 const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }) => {
   const { race, selectedDate: selectedDateParam } = route.params;
-  const selectedDate = selectedDateParam ?? dayjs().format('YYYY-MM-DD');
   const isStageRace = race.startDate !== race.endDate;
+  const [currentDate, setCurrentDate] = useState(selectedDateParam ?? dayjs().format('YYYY-MM-DD'));
   const [startlist, setStartlist] = useState<StartlistTeam[]>([]);
   const [results, setResults] = useState<RaceResult[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -185,6 +185,23 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Stage tile swipe gesture
+  const stageDragX = useRef(new Animated.Value(0)).current;
+  const stagePanState = useRef({ prevDate: null as string | null, nextDate: null as string | null });
+  const stagePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        isStageRace && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 8,
+      onPanResponderMove: (_, gs) => stageDragX.setValue(gs.dx),
+      onPanResponderRelease: (_, gs) => {
+        const { prevDate, nextDate } = stagePanState.current;
+        if (gs.dx < -60 && prevDate) setCurrentDate(prevDate);
+        else if (gs.dx > 60 && nextDate) setCurrentDate(nextDate);
+        Animated.spring(stageDragX, { toValue: 0, useNativeDriver: false }).start();
+      },
+    }),
+  ).current;
 
   // Startlist swipe gesture
   const dragX = useRef(new Animated.Value(0)).current;
@@ -210,13 +227,19 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }),
   ).current;
   const teamTabsRef = useRef<FlatList<StartlistTeam>>(null);
-  const isFutureRace = dayjs(race.startDate).isAfter(dayjs(), 'day');
-  const [activeTab, setActiveTab] = useState<DetailTab>(isFutureRace ? 'profile' : 'startlist');
+  const raceCompleted = !dayjs(currentDate).isAfter(dayjs(), 'day');
+  const [activeTab, setActiveTab] = useState<DetailTab>(raceCompleted ? 'results' : 'profile');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
   const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
   const sortedStages = [...stages].sort(compareStageOrder);
-  const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === selectedDate);
+  const sortedUniqueDates = [...new Set(sortedStages.map((s) => s.date))].sort();
+  const currentDateIndex = sortedUniqueDates.indexOf(currentDate);
+  const prevStageDate = currentDateIndex > 0 ? sortedUniqueDates[currentDateIndex - 1] : null;
+  const nextStageDate =
+    currentDateIndex < sortedUniqueDates.length - 1 ? sortedUniqueDates[currentDateIndex + 1] : null;
+  stagePanState.current = { prevDate: prevStageDate, nextDate: nextStageDate };
+  const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === currentDate);
   const stageOnSelectedDate =
     stagesOnSelectedDate.length > 0 ? stagesOnSelectedDate[stagesOnSelectedDate.length - 1] : null;
   const stageProgressOnSelectedDate = getStageProgressIndex(sortedStages, stageOnSelectedDate);
@@ -272,8 +295,9 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: activeTab !== 'startlist' });
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Disable native back gesture for stage races (tile swipe handles horizontal gestures)
+    navigation.setOptions({ gestureEnabled: !isStageRace && activeTab !== 'startlist' });
+  }, [activeTab, isStageRace]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (startlist.length > 0) {
@@ -337,15 +361,13 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
       setActiveClassificationTab('gc');
       setActiveResultsTab('gc');
-      const raceIsFuture = dayjs(race.startDate).isAfter(dayjs(), 'day');
-      if (raceIsFuture) {
-        setActiveTab('profile');
-      } else if (isStageRace) {
+      const raceCompleted = !dayjs(currentDate).isAfter(dayjs(), 'day');
+      if (raceCompleted && (isStageRace || resultData.length > 0)) {
         setActiveTab('results');
-      } else if (resultData.length > 0) {
-        setActiveTab('results');
-      } else {
+      } else if (raceCompleted) {
         setActiveTab('startlist');
+      } else {
+        setActiveTab('profile');
       }
     } catch {
       setStartlist([]);
@@ -662,12 +684,17 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={styles.container}>
-        <RaceItem
-          race={race}
-          currentStage={stageOnSelectedDate}
-          currentStageProgress={stageProgressOnSelectedDate}
-          totalStages={sortedStages.length || undefined}
-        />
+        <Animated.View
+          style={{ transform: [{ translateX: stageDragX }] }}
+          {...(isStageRace ? stagePanResponder.panHandlers : {})}
+        >
+          <RaceItem
+            race={race}
+            currentStage={stageOnSelectedDate}
+            currentStageProgress={stageProgressOnSelectedDate}
+            totalStages={sortedStages.length || undefined}
+          />
+        </Animated.View>
 
         {availableTabs.length > 1 ? (
           <View style={styles.tabSwitcher}>
