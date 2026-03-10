@@ -7,7 +7,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   getCategoryAccentColor,
   RACE_SUBGROUP_COLORS,
-  RACE_TYPE_COLORS,
   RaceSubgroupKey,
   StageTypeKey,
 } from '../constants/raceColors';
@@ -38,29 +37,6 @@ const countryToFlag = (code: string): string =>
     .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
     .join('');
 
-// ─── StagePill ────────────────────────────────────────────────────────────────
-
-const StagePill: React.FC<{ label: string; color: string }> = ({ label, color }) => (
-  <View
-    style={[stagePillStyles.pill, { backgroundColor: color + '22', borderColor: color + '55' }]}
-  >
-    <Text style={[stagePillStyles.text, { color }]}>{label.toUpperCase()}</Text>
-  </View>
-);
-
-const stagePillStyles = StyleSheet.create({
-  pill: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  text: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-});
 
 // ─── StageTypeTag ─────────────────────────────────────────────────────────────
 
@@ -74,12 +50,11 @@ const STAGE_TYPE_CONFIG: Record<StageTypeKey, { icon: MCIName; label: string }> 
 
 const StageTypeTag: React.FC<{ type: StageTypeKey }> = ({ type }) => {
   const config = STAGE_TYPE_CONFIG[type];
-  const colors = RACE_TYPE_COLORS[type];
   if (!config) return null;
   return (
-    <View style={[tagStyles.tag, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-      <MaterialCommunityIcons name={config.icon} size={11} color={colors.text} />
-      <Text style={[tagStyles.text, { color: colors.text }]}>{config.label}</Text>
+    <View style={tagStyles.tag}>
+      <MaterialCommunityIcons name={config.icon} size={11} color="#A0AABB" />
+      <Text style={tagStyles.text}>{config.label}</Text>
     </View>
   );
 };
@@ -94,12 +69,15 @@ const tagStyles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   text: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+    color: '#A0AABB',
   },
 });
 
@@ -319,15 +297,15 @@ const RaceItem: React.FC<RaceItemProps> = ({
       )}
 
       <View style={styles.content}>
-        {/* Row 1: flag · name · stage pill · terrain tag */}
+        {/* Row 1: flag · name (+ stage inline) · terrain tag */}
         <View style={styles.headerRow}>
           <Text style={styles.flag}>{countryToFlag(race.country)}</Text>
           <Text style={styles.raceName} numberOfLines={2}>
             {race.name}
+            {hasActiveStage && stageLabel ? (
+              <Text style={styles.stageInline}>{' · '}{stageLabel.toUpperCase()}</Text>
+            ) : null}
           </Text>
-          {hasActiveStage && stageLabel ? (
-            <StagePill label={stageLabel} color={categoryColor} />
-          ) : null}
           {stageType ? <StageTypeTag type={stageType} /> : null}
         </View>
 
@@ -405,6 +383,12 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
     letterSpacing: -0.2,
+  },
+  stageInline: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A0AABB',
+    letterSpacing: 0.3,
   },
   routeRow: {
     flexDirection: 'row',
