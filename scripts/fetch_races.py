@@ -253,6 +253,129 @@ def fetch_race_slugs(
     return results
 
 
+def _fetch_teams_today(stage_url: str, scraper_session) -> Optional[list]:
+    """Fetch today's team stage results from the PCS teams-gc page.
+
+    The teams-gc page (e.g. race/paris-nice/2026/stage-2-teams-gc) has two
+    tables: general team GC (Prev column present) and today's stage result
+    (no Prev column).  We target the today table.
+
+    PCS table structure quirk: the <th> header elements in the today table
+    are placed directly inside <table> without a wrapping <tr>, so
+    find_all("tr") returns only data rows.  We derive column positions from
+    the <th> elements and start iterating from all_rows[0].
+
+    Time cells contain a <span class="hide"> with the machine value:
+      rank 1  → absolute stage time, e.g. "13:15:21"
+      others  → gap from leader, e.g. "0:00" (same time) or "0:18"
+    We always use this hidden value instead of the visible text so that
+    same-time teams get "0:00" rather than the ",," marker.
+    """
+    try:
+        url = f"https://www.procyclingstats.com/{stage_url}-teams-gc"
+        resp = scraper_session.get(url, timeout=15)
+        if resp.status_code != 200:
+            return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # Find the today table: <th> texts start with Rnk, Team, Class, Time.
+        # The general table has Prev as the 4th header so it won't match.
+        # Take the LAST matching table — today comes after general in the HTML.
+        today_table = None
+        for table in soup.find_all("table"):
+            th_texts = [th.get_text(strip=True) for th in table.find_all("th")]
+            if len(th_texts) >= 4 and th_texts[:4] == ["Rnk", "Team", "Class", "Time"]:
+                today_table = table  # keep going — last match wins
+        if not today_table:
+            return None
+        # Derive column positions from <th> elements (they may not be in a <tr>)
+        th_texts = [th.get_text(strip=True) for th in today_table.find_all("th")]
+        col_team = next((i for i, t in enumerate(th_texts) if t == "Team"), 1)
+        col_time = next((i for i, t in enumerate(th_texts) if t == "Time"), 3)
+        # Because the <th>s are not in a <tr>, all find_all("tr") rows are data rows
+        all_rows = today_table.find_all("tr")
+        # Determine data start: skip any leading <tr> that IS a header row
+        # (contains cells whose texts match column labels)
+        data_start = 0
+        if all_rows:
+            first_cell_texts = [c.get_text(strip=True) for c in all_rows[0].find_all(["th", "td"])]
+            if "Team" in first_cell_texts and "Rnk" in first_cell_texts:
+                data_start = 1
+        rows = []
+        for i, row in enumerate(all_rows[data_start:], 1):
+            cells = row.find_all(["td", "th"])
+            if len(cells) <= max(col_team, col_time):
+                continue
+            # PCS may leave the rank cell empty for rank 1 (icon only)
+            rank = cells[0].get_text(strip=True) or str(i)
+            team = cells[col_team].get_text(strip=True).strip()
+            if not team:
+                continue
+            # Always use the hidden span's machine value: absolute time for
+            # rank 1, gap seconds for others ("0:00" = same time as leader).
+            time_cell = cells[col_time]
+            span = time_cell.find("span", class_="hide")
+            time_val = span.get_text(strip=True) if span else time_cell.get_text(strip=True)
+            entry: dict = {"rankLabel": rank, "riderName": team}
+            if time_val:
+                entry["time"] = time_val
+            rows.append(entry)
+        # Convert rank 2+ gap times to absolute times so the app can display
+        # them consistently with GC/Youth (absolute time + gap from leader).
+        if rows:
+            leader = next((r for r in rows if r.get("rankLabel") == "1"), None)
+            if leader and "time" in leader:
+                def _parse_secs(t: str) -> Optional[int]:
+                    parts = t.split(":")
+                    try:
+                        if len(parts) == 3:
+                            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                        if len(parts) == 2:
+                            return int(parts[0]) * 60 + int(parts[1])
+                    except ValueError:
+                        pass
+                    return None
+
+                def _fmt_secs(s: int) -> str:
+                    h, rem = divmod(s, 3600)
+                    m, sec = divmod(rem, 60)
+                    return f"{h}:{m:02d}:{sec:02d}"
+
+                leader_secs = _parse_secs(leader["time"])
+                if leader_secs is not None:
+                    for r in rows:
+                        if r is leader or "time" not in r:
+                            continue
+                        gap_secs = _parse_secs(r["time"])
+                        if gap_secs is not None:
+                            r["time"] = _fmt_secs(leader_secs + gap_secs)
+        return rows if rows else None
+    except Exception:
+        return None
+
+
+def _parse_profile_img_url(parser) -> Optional[str]:
+    """Extract the stage elevation profile image URL from a PCS stage page.
+
+    PCS profile image URLs look like:
+    images/profiles/ap/ba/paris-nice-2026-stage-3-profile-<hash>.jpg
+
+    Accepts a selectolax HTMLParser (detail.html from procyclingstats Stage).
+    """
+    try:
+        node = parser.css_first('img[src*="images/profiles/"]')
+        if node:
+            src = node.attributes.get("src", "")
+            if src:
+                if src.startswith("http"):
+                    return src
+                if src.startswith("/"):
+                    return f"https://www.procyclingstats.com{src}"
+                return f"https://www.procyclingstats.com/{src}"
+    except Exception:
+        pass
+    return None
+
+
 def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[str]:
     """Map PCS stage_type / profile_icon fields to app stageType values."""
     if stage_type_str == "ITT":
@@ -375,6 +498,9 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
             elevation = detail.vertical_meters() or 0
             if elevation:
                 result["elevation"] = elevation
+            profile_img_url = _parse_profile_img_url(detail.html)
+            if profile_img_url:
+                result["profileImageUrl"] = profile_img_url
         except Exception:
             pass  # fields stay absent if page not available yet
 
@@ -496,6 +622,7 @@ def fetch_stages(
     Optional[dict],
     Optional[dict],
     Optional[dict],
+    Optional[dict],
 ]:
     """
     Fetch stage list for a multi-day race using procyclingstats.
@@ -515,17 +642,17 @@ def fetch_stages(
     from procyclingstats import Stage as PCSStage
 
     if start_date == end_date:
-        return None, None, None, None, None, None, None  # one-day race, no stages
+        return None, None, None, None, None, None, None, None  # one-day race, no stages
 
     try:
         race = Race(pcs_slug)
         raw_stages = race.stages()
     except Exception as exc:
         print(f"  ! No stages for {pcs_slug}: {exc}")
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None
 
     if not raw_stages:
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None
 
     # PCS returns dates as "MM-DD"; we need "YYYY-MM-DD".
     # Extract year from start_date (format "YYYY-MM-DD").
@@ -538,6 +665,7 @@ def fetch_stages(
     kom_snapshots: dict[str, list] = {}
     youth_snapshots: dict[str, list] = {}
     teams_snapshots: dict[str, list] = {}
+    teams_stage_result_snapshots: dict[str, list] = {}
     for s in raw_stages:
         stage_url = s.get("stage_url", "")
         stage_number = parse_stage_number(stage_url)
@@ -556,6 +684,7 @@ def fetch_stages(
         start_time = ""
         stage_type = None
         elevation = 0
+        profile_img_url = None
         if stage_url:
             try:
                 if delay > 0:
@@ -570,6 +699,7 @@ def fetch_stages(
                     detail.profile_icon() or "",
                 )
                 elevation = detail.vertical_meters() or 0
+                profile_img_url = _parse_profile_img_url(detail.html)
 
                 try:
                     stage_rows = detail.results(
@@ -583,7 +713,7 @@ def fetch_stages(
                     )
                 except Exception:
                     stage_rows = []
-                normalized_stage_results = normalize_result_rows(stage_rows, limit=MAX_RESULT_ROWS)
+                normalized_stage_results = normalize_result_rows(stage_rows, limit=len(stage_rows))
                 if normalized_stage_results:
                     stage_result_snapshots[str(stage_number)] = normalized_stage_results
 
@@ -598,7 +728,7 @@ def fetch_stages(
                     )
                 except Exception:
                     gc_rows = []
-                normalized_gc = normalize_result_rows(gc_rows, limit=MAX_RESULT_ROWS)
+                normalized_gc = normalize_result_rows(gc_rows, limit=len(gc_rows))
                 if normalized_gc:
                     gc_snapshots[str(stage_number)] = normalized_gc
 
@@ -615,7 +745,7 @@ def fetch_stages(
                     points_rows = []
                 normalized_points = normalize_result_rows(
                     points_rows,
-                    limit=MAX_RESULT_ROWS,
+                    limit=len(points_rows),
                     value_field="points",
                     include_status=False,
                 )
@@ -635,7 +765,7 @@ def fetch_stages(
                     kom_rows = []
                 normalized_kom = normalize_result_rows(
                     kom_rows,
-                    limit=MAX_RESULT_ROWS,
+                    limit=len(kom_rows),
                     value_field="points",
                     include_status=False,
                 )
@@ -655,7 +785,7 @@ def fetch_stages(
                     youth_rows = []
                 normalized_youth = normalize_result_rows(
                     youth_rows,
-                    limit=MAX_RESULT_ROWS,
+                    limit=len(youth_rows),
                     include_status=False,
                 )
                 if normalized_youth:
@@ -672,13 +802,17 @@ def fetch_stages(
                     teams_rows = []
                 normalized_teams = normalize_result_rows(
                     teams_rows,
-                    limit=MAX_RESULT_ROWS,
+                    limit=len(teams_rows),
                     name_field="team_name",
                     include_team_name=False,
                     include_status=False,
                 )
                 if normalized_teams:
                     teams_snapshots[str(stage_number)] = normalized_teams
+
+                teams_today = _fetch_teams_today(stage_url, get_thread_scraper())
+                if teams_today:
+                    teams_stage_result_snapshots[str(stage_number)] = teams_today
             except Exception:
                 pass  # leave fields empty if stage page not yet available
 
@@ -694,6 +828,8 @@ def fetch_stages(
             stage_dict["stageType"] = stage_type
         if elevation:
             stage_dict["elevation"] = elevation
+        if profile_img_url:
+            stage_dict["profileImageUrl"] = profile_img_url
         result.append(stage_dict)
 
     return (
@@ -704,6 +840,7 @@ def fetch_stages(
         kom_snapshots if kom_snapshots else None,
         youth_snapshots if youth_snapshots else None,
         teams_snapshots if teams_snapshots else None,
+        teams_stage_result_snapshots if teams_stage_result_snapshots else None,
     )
 
 
@@ -813,6 +950,7 @@ def write_generated_data(
     kom_standings: dict,
     youth_standings: dict,
     teams_standings: dict,
+    teams_stage_results: dict,
 ) -> None:
     payload = {
         "races": races,
@@ -825,6 +963,7 @@ def write_generated_data(
         "komStandings": kom_standings,
         "youthStandings": youth_standings,
         "teamsStandings": teams_standings,
+        "teamsStageResults": teams_stage_results,
     }
 
     GENERATED_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -922,6 +1061,7 @@ def main():
     kom_standings_map: dict[str, dict] = {}
     youth_standings_map: dict[str, dict] = {}
     teams_standings_map: dict[str, dict] = {}
+    teams_stage_results_map: dict[str, dict] = {}
     team_country_cache = load_team_country_cache()
     cache_lock = threading.Lock()
     initial_team_country_cache = json.dumps(team_country_cache, sort_keys=True)
@@ -1018,7 +1158,7 @@ def main():
     def _fetch_stages(race):
         pcs_slug = race.get("pcsSlug")
         if not pcs_slug:
-            return race["id"], None, None, None, None, None, None, None
+            return race["id"], None, None, None, None, None, None, None, None
 
         race_id = race["id"]
         start_date = race.get("startDate", "")
@@ -1032,6 +1172,7 @@ def main():
             kom_standings,
             youth_standings,
             teams_standings,
+            teams_stage_results,
         ) = fetch_stages(
             pcs_slug,
             start_date,
@@ -1052,6 +1193,8 @@ def main():
             print(f"    Added {len(youth_standings)} youth snapshots")
         if teams_standings:
             print(f"    Added {len(teams_standings)} team snapshots")
+        if teams_stage_results:
+            print(f"    Added {len(teams_stage_results)} team stage result snapshots")
         return (
             race_id,
             stages,
@@ -1061,6 +1204,7 @@ def main():
             kom_standings,
             youth_standings,
             teams_standings,
+            teams_stage_results,
         )
 
     if eligible_stage_races:
@@ -1076,6 +1220,7 @@ def main():
                 kom_standings,
                 youth_standings,
                 teams_standings,
+                teams_stage_results,
             ) in executor.map(
                 _fetch_stages,
                 eligible_stage_races,
@@ -1094,6 +1239,8 @@ def main():
                     youth_standings_map[race_id] = youth_standings
                 if teams_standings:
                     teams_standings_map[race_id] = teams_standings
+                if teams_stage_results:
+                    teams_stage_results_map[race_id] = teams_stage_results
 
     print(f"\nCollected {len(stages_map)} stage files.")
     print(f"Collected {len(gc_standings_map)} GC standing files.")
@@ -1102,6 +1249,7 @@ def main():
     print(f"Collected {len(kom_standings_map)} KOM standing files.")
     print(f"Collected {len(youth_standings_map)} youth standing files.")
     print(f"Collected {len(teams_standings_map)} team standing files.")
+    print(f"Collected {len(teams_stage_results_map)} team stage result files.")
 
     if json.dumps(team_country_cache, sort_keys=True) != initial_team_country_cache:
         write_team_country_cache(team_country_cache)
@@ -1117,6 +1265,7 @@ def main():
         kom_standings_map,
         youth_standings_map,
         teams_standings_map,
+        teams_stage_results_map,
     )
     print(f"\nWrote local runtime data to {GENERATED_PATH}")
     print("\nSummary")

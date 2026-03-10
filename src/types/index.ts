@@ -63,6 +63,7 @@ export interface Race {
   startTime?: string; // "HH:MM", one-day races only
   stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt'; // one-day races only
   elevation?: number; // vertical metres, one-day races only
+  profileImageUrl?: string; // PCS elevation profile image URL
 }
 
 // Grouped races by date
@@ -87,6 +88,7 @@ export interface Stage {
   startTime?: string;  // "HH:MM"
   stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt';
   elevation?: number;  // vertical metres
+  profileImageUrl?: string; // PCS elevation profile image URL
 }
 
 // Startlist types

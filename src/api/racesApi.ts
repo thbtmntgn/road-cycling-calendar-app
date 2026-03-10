@@ -29,6 +29,7 @@ const localData = pcsData as {
   komStandings?: Record<string, RaceKomStandingsByStage>;
   youthStandings?: Record<string, RaceYouthStandingsByStage>;
   teamsStandings?: Record<string, RaceTeamsStandingsByStage>;
+  teamsStageResults?: Record<string, RaceTeamsStandingsByStage>;
 };
 
 const normalizeUciClass = (uciClass: string | undefined): UciClass | null => {
@@ -233,6 +234,12 @@ export const fetchTeamsStandings = async (
   raceId: string
 ): Promise<RaceTeamsStandingsByStage> => {
   return localData.teamsStandings?.[raceId] ?? {};
+};
+
+export const fetchTeamsStageResults = async (
+  raceId: string
+): Promise<RaceTeamsStandingsByStage> => {
+  return localData.teamsStageResults?.[raceId] ?? {};
 };
 
 // Filter races by gender

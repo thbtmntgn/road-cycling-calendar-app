@@ -27,6 +27,7 @@ import {
   fetchStartlist,
   fetchStages,
   fetchTeamsStandings,
+  fetchTeamsStageResults,
   fetchYouthStandings,
 } from '../api/racesApi';
 import RaceItem from '../components/RaceItem';
@@ -42,7 +43,7 @@ import {
   Stage,
   StartlistTeam,
 } from '../types';
-import { compareStageOrder, formatStageLabel, getStageProgressIndex } from '../utils/stageUtils';
+import { compareStageOrder, getStageProgressIndex } from '../utils/stageUtils';
 
 // Self-contained param list — works from both CalendarStack and FavoritesStack
 type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
@@ -52,7 +53,7 @@ interface RaceDetailScreenProps {
   route: RouteProp<RaceDetailParams, 'RaceDetail'>;
 }
 
-type DetailTab = 'classification' | 'results' | 'startlist';
+type DetailTab = 'profile' | 'classification' | 'results' | 'startlist';
 type ClassificationTab = 'gc' | 'points' | 'kom' | 'youth' | 'teams';
 
 const CLASSIFICATION_TABS: { key: ClassificationTab; label: string }[] = [
@@ -65,6 +66,54 @@ const CLASSIFICATION_TABS: { key: ClassificationTab; label: string }[] = [
 
 const TEAM_SIDEBAR_WIDTH = 72;
 const SCREEN_PADDING = 16;
+
+const parseTimeToSeconds = (time: string): number | null => {
+  const parts = time.split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+};
+
+const formatDuration = (seconds: number): string => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+};
+
+const formatGap = (seconds: number): string => `+${formatDuration(seconds)}`;
+
+const computeStageEarned = (
+  current: RaceResult[],
+  previous: RaceResult[],
+  mode: 'points' | 'time',
+): RaceResult[] => {
+  const prevMap = new Map(previous.map((r) => [r.riderName, r.time ?? '0']));
+  const earned = current.flatMap((r) => {
+    const prevVal = prevMap.get(r.riderName);
+    if (mode === 'points') {
+      const diff = (Number(r.time) || 0) - (Number(prevVal) || 0);
+      if (diff <= 0) return [];
+      return [{ ...r, time: String(diff) }];
+    } else {
+      const currSecs = r.time ? parseTimeToSeconds(r.time) : null;
+      const prevSecs = prevVal ? parseTimeToSeconds(prevVal) : null;
+      if (currSecs === null) return [];
+      const stageSecs = prevSecs !== null ? currSecs - prevSecs : currSecs;
+      if (stageSecs <= 0) return [];
+      return [{ ...r, time: formatDuration(stageSecs) }];
+    }
+  });
+  const sorted = earned.sort((a, b) =>
+    mode === 'points'
+      ? (Number(b.time) || 0) - (Number(a.time) || 0)
+      : (parseTimeToSeconds(a.time ?? '') ?? 0) - (parseTimeToSeconds(b.time ?? '') ?? 0),
+  );
+  return sorted.map((r, i) => ({ ...r, rankLabel: String(i + 1) }));
+};
 
 const getCountryFlag = (code?: string | null): string | null => {
   const normalized = (code ?? '').trim().toUpperCase();
@@ -118,11 +167,13 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [komStandingsByStage, setKomStandingsByStage] = useState<RaceKomStandingsByStage>({});
   const [youthStandingsByStage, setYouthStandingsByStage] = useState<RaceYouthStandingsByStage>({});
   const [teamsStandingsByStage, setTeamsStandingsByStage] = useState<RaceTeamsStandingsByStage>({});
+  const [teamsStageResultsByStage, setTeamsStageResultsByStage] = useState<RaceTeamsStandingsByStage>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState<DetailTab>('startlist');
+  const isFutureRace = dayjs(race.startDate).isAfter(dayjs(), 'day');
+  const [activeTab, setActiveTab] = useState<DetailTab>(isFutureRace ? 'profile' : 'startlist');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
+  const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
   const sortedStages = [...stages].sort(compareStageOrder);
   const stagesOnSelectedDate = sortedStages.filter((stage) => stage.date === selectedDate);
@@ -145,19 +196,35 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   };
   const activeClassificationRows = classificationRowsByTab[activeClassificationTab];
   const stageResultRows =
-    isStageRace && stageNumberOnSelectedDate !== null
-      ? stageResultsByStage[String(stageNumberOnSelectedDate)] ?? []
-      : [];
+    isStageRace && stageKey !== null ? stageResultsByStage[stageKey] ?? [] : [];
+  const prevStageKey = stageKey !== null ? String(Number(stageKey) - 1) : null;
+  const youthRiderNames = new Set(
+    (isStageRace && stageKey ? youthStandingsByStage[stageKey] ?? [] : []).map((r) => r.riderName),
+  );
+  const gcRows = isStageRace ? stageResultRows : results;
+  const resultRowsByTab: Record<ClassificationTab, RaceResult[]> = {
+    gc: gcRows,
+    points: computeStageEarned(
+      isStageRace && stageKey ? pointsStandingsByStage[stageKey] ?? [] : [],
+      prevStageKey ? pointsStandingsByStage[prevStageKey] ?? [] : [],
+      'points',
+    ),
+    kom: computeStageEarned(
+      isStageRace && stageKey ? komStandingsByStage[stageKey] ?? [] : [],
+      prevStageKey ? komStandingsByStage[prevStageKey] ?? [] : [],
+      'points',
+    ),
+    youth: gcRows
+      .filter((r) => youthRiderNames.has(r.riderName))
+      .map((r, i) => ({ ...r, rankLabel: String(i + 1) })),
+    teams: isStageRace && stageKey ? teamsStageResultsByStage[stageKey] ?? [] : [],
+  };
+  const activeResultRows = resultRowsByTab[activeResultsTab];
   const canShowResults = isStageRace || results.length > 0;
   const canShowGeneralStandings = isStageRace;
-  const availableTabs: DetailTab[] = [];
-  if (canShowResults) {
-    availableTabs.push('results');
-  }
-  if (canShowGeneralStandings) {
-    availableTabs.push('classification');
-  }
-  availableTabs.push('startlist');
+  const availableTabs: DetailTab[] = ['profile', 'startlist'];
+  if (canShowResults) availableTabs.push('results');
+  if (canShowGeneralStandings) availableTabs.push('classification');
 
   useEffect(() => {
     navigation.setOptions({ title: race.name });
@@ -178,6 +245,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
         komStandingsData,
         youthStandingsData,
         teamsStandingsData,
+        teamsStageResultsData,
       ] =
         await Promise.all([
           fetchStartlist(race.id),
@@ -197,6 +265,9 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           isStageRace
             ? fetchTeamsStandings(race.id)
             : Promise.resolve<RaceTeamsStandingsByStage>({}),
+          isStageRace
+            ? fetchTeamsStageResults(race.id)
+            : Promise.resolve<RaceTeamsStandingsByStage>({}),
         ]);
       setStartlist(startlistData);
       setResults(resultData);
@@ -207,9 +278,14 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       setKomStandingsByStage(komStandingsData);
       setYouthStandingsByStage(youthStandingsData);
       setTeamsStandingsByStage(teamsStandingsData);
-      setCurrentTeamIndex(0);
+      setTeamsStageResultsByStage(teamsStageResultsData);
+
       setActiveClassificationTab('gc');
-      if (isStageRace) {
+      setActiveResultsTab('gc');
+      const raceIsFuture = dayjs(race.startDate).isAfter(dayjs(), 'day');
+      if (raceIsFuture) {
+        setActiveTab('profile');
+      } else if (isStageRace) {
         setActiveTab('results');
       } else if (resultData.length > 0) {
         setActiveTab('results');
@@ -226,8 +302,11 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       setKomStandingsByStage({});
       setYouthStandingsByStage({});
       setTeamsStandingsByStage({});
-      setCurrentTeamIndex(0);
+
+      setTeamsStageResultsByStage({});
+
       setActiveClassificationTab('gc');
+      setActiveResultsTab('gc');
       setActiveTab('startlist');
       setError('Failed to load race details');
     } finally {
@@ -240,9 +319,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       return;
     }
 
-    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / pagerWidth);
-    const boundedIndex = Math.max(0, Math.min(startlist.length - 1, nextIndex));
-    setCurrentTeamIndex(boundedIndex);
+    Math.round(event.nativeEvent.contentOffset.x / pagerWidth);
   };
 
   const renderTeamPage = ({
@@ -314,9 +391,24 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     );
   };
 
-  const renderClassificationRow = (item: RaceResult, index: number, totalRows: number) => {
+  const renderClassificationRow = (
+    item: RaceResult,
+    index: number,
+    totalRows: number,
+    leaderSeconds: number | null = null,
+    showLeaderGap = false,
+  ) => {
     const riderFlag = getCountryFlag(item.nationality);
     const trailingLabel = item.time || item.status;
+    const rankLabel = item.rankLabel;
+
+    let gap: string | null = null;
+    if ((index > 0 || showLeaderGap) && leaderSeconds !== null && item.time) {
+      const itemSeconds = parseTimeToSeconds(item.time);
+      if (itemSeconds !== null) {
+        gap = formatGap(Math.max(0, itemSeconds - leaderSeconds));
+      }
+    }
 
     return (
       <View
@@ -335,7 +427,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             },
           ]}
         >
-          <Text style={[styles.resultRankText, { color: categoryColor }]}>{item.rankLabel}</Text>
+          <Text style={[styles.resultRankText, { color: categoryColor }]}>{rankLabel}</Text>
         </View>
 
         <View style={styles.resultIdentity}>
@@ -346,7 +438,10 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           {item.teamName ? <Text style={styles.resultTeam}>{item.teamName}</Text> : null}
         </View>
 
-        {trailingLabel ? <Text style={styles.resultTime}>{trailingLabel}</Text> : null}
+        <View style={styles.resultTrailing}>
+          {trailingLabel ? <Text style={styles.resultTime}>{trailingLabel}</Text> : null}
+          {gap ? <Text style={styles.resultGap}>{gap}</Text> : null}
+        </View>
       </View>
     );
   };
@@ -357,18 +452,55 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   }: {
     item: RaceResult;
     index: number;
-  }) => renderClassificationRow(item, index, isStageRace ? stageResultRows.length : results.length);
+  }) => {
+    const isYouth = activeResultsTab === 'youth';
+    const isTeams = activeResultsTab === 'teams';
+    const leaderSeconds = isYouth
+      ? (generalStandingRows[0]?.time ? parseTimeToSeconds(generalStandingRows[0].time) : null)
+      : (activeResultRows[0]?.time ? parseTimeToSeconds(activeResultRows[0].time) : null);
+    return renderClassificationRow(item, index, activeResultRows.length, leaderSeconds, false);
+  };
 
-  const renderResults = () => {
-    const resultRows = isStageRace ? stageResultRows : results;
-    let emptyMessage = 'Results not available yet';
-    if (isStageRace) {
-      emptyMessage = stageOnSelectedDate
-        ? 'Stage results not available yet'
-        : 'No stage scheduled on this date';
+  const renderProfile = () => {
+    const profileImageUrl = isStageRace
+      ? stageOnSelectedDate?.profileImageUrl
+      : race.profileImageUrl;
+
+    if (!profileImageUrl) {
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="map-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>Profile not available yet</Text>
+        </View>
+      );
     }
 
-    if (resultRows.length === 0) {
+    return (
+      <ScrollView
+        style={styles.profileScroll}
+        contentContainerStyle={styles.profileScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Image
+          source={{ uri: profileImageUrl }}
+          style={styles.profileImage}
+          resizeMode="contain"
+        />
+      </ScrollView>
+    );
+  };
+
+  const activeResultsLabel =
+    CLASSIFICATION_TABS.find((t) => t.key === activeResultsTab)?.label ?? 'Results';
+
+  const renderResults = () => {
+    if (activeResultRows.length === 0) {
+      let emptyMessage = 'Results not available yet';
+      if (isStageRace) {
+        emptyMessage = stageOnSelectedDate
+          ? `${activeResultsLabel} results not available yet`
+          : 'No stage scheduled on this date';
+      }
       return (
         <View style={styles.centerContainer}>
           <Ionicons name="ribbon-outline" size={40} color="#555555" />
@@ -379,7 +511,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
     return (
       <FlatList
-        data={resultRows}
+        data={activeResultRows}
         keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
         renderItem={renderResultRow}
         style={styles.resultsList}
@@ -395,7 +527,12 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   }: {
     item: RaceResult;
     index: number;
-  }) => renderClassificationRow(item, index, activeClassificationRows.length);
+  }) => {
+    const leaderSeconds = activeClassificationRows[0]?.time
+      ? parseTimeToSeconds(activeClassificationRows[0].time)
+      : null;
+    return renderClassificationRow(item, index, activeClassificationRows.length, leaderSeconds);
+  };
 
   const activeClassificationLabel =
     CLASSIFICATION_TABS.find((tab) => tab.key === activeClassificationTab)?.label ?? 'Classification';
@@ -463,37 +600,6 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     );
   };
 
-  const activeTabTitle =
-    activeTab === 'classification'
-      ? 'Classification'
-      : activeTab === 'results'
-        ? 'Results'
-        : 'Startlist';
-
-  let activeTabMeta: string | null = null;
-  if (activeTab === 'classification') {
-    if (activeClassificationRows.length > 0) {
-      activeTabMeta = `${activeClassificationLabel} · Top ${activeClassificationRows.length}`;
-      if (stageOnSelectedDate) {
-        activeTabMeta += ` · After ${formatStageLabel(stageOnSelectedDate.stageNumber)}`;
-      }
-    } else {
-      activeTabMeta = activeClassificationLabel;
-    }
-  } else if (activeTab === 'results') {
-    if (isStageRace) {
-      if (stageResultRows.length > 0) {
-        activeTabMeta = `Top ${stageResultRows.length}`;
-        if (stageOnSelectedDate) {
-          activeTabMeta += ` · ${formatStageLabel(stageOnSelectedDate.stageNumber)}`;
-        }
-      }
-    } else {
-      activeTabMeta = results.length > 0 ? `Top ${results.length}` : null;
-    }
-  } else if (startlist.length > 0) {
-    activeTabMeta = `${currentTeamIndex + 1} / ${startlist.length}`;
-  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -524,72 +630,81 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                     activeTab === tab ? styles.tabButtonTextActive : null,
                   ]}
                 >
-                  {tab === 'classification'
-                    ? 'Classification'
-                    : tab === 'results'
-                      ? 'Results'
-                      : 'Startlist'}
+                  {tab === 'profile'
+                    ? 'Profile'
+                    : tab === 'classification'
+                      ? 'Classification'
+                      : tab === 'results'
+                        ? 'Results'
+                        : 'Startlist'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         ) : null}
 
-        {activeTab === 'classification' ? (
+        {(activeTab === 'classification' || (activeTab === 'results' && isStageRace)) ? (
           <View style={styles.classificationSubtabsWrap}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.classificationSubtabs}
             >
-              {CLASSIFICATION_TABS.map((tab) => (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[
-                    styles.classificationSubtab,
-                    activeClassificationTab === tab.key ? styles.classificationSubtabActive : null,
-                  ]}
-                  onPress={() => setActiveClassificationTab(tab.key)}
-                  activeOpacity={0.85}
-                >
-                  <Text
+              {CLASSIFICATION_TABS.map((tab) => {
+                const isActive = activeTab === 'classification'
+                  ? activeClassificationTab === tab.key
+                  : activeResultsTab === tab.key;
+                const onPress = activeTab === 'classification'
+                  ? () => setActiveClassificationTab(tab.key)
+                  : () => setActiveResultsTab(tab.key);
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
                     style={[
-                      styles.classificationSubtabText,
-                      activeClassificationTab === tab.key ? styles.classificationSubtabTextActive : null,
+                      styles.classificationSubtab,
+                      isActive ? styles.classificationSubtabActive : null,
                     ]}
+                    onPress={onPress}
+                    activeOpacity={0.85}
                   >
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.classificationSubtabText,
+                        isActive ? styles.classificationSubtabTextActive : null,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         ) : null}
 
-        <View style={styles.startlistHeader}>
-          <Text style={styles.startlistTitle}>{activeTabTitle}</Text>
-          {activeTabMeta ? <Text style={styles.startlistCount}>{activeTabMeta}</Text> : null}
+        <View style={styles.tabContent}>
+          {loading ? (
+            <View style={styles.centerContainer}>
+              <ActivityIndicator size="large" color="#F3F4F6" />
+            </View>
+          ) : error ? (
+            <View style={styles.centerContainer}>
+              <Ionicons name="warning-outline" size={40} color="#FF6B6B" />
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadRaceData}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            activeTab === 'profile'
+              ? renderProfile()
+              : activeTab === 'classification'
+                ? renderClassificationStandings()
+                : activeTab === 'results'
+                  ? renderResults()
+                  : renderStartlist()
+          )}
         </View>
-
-        {loading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#F3F4F6" />
-          </View>
-        ) : error ? (
-          <View style={styles.centerContainer}>
-            <Ionicons name="warning-outline" size={40} color="#FF6B6B" />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadRaceData}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          activeTab === 'classification'
-            ? renderClassificationStandings()
-            : activeTab === 'results'
-              ? renderResults()
-              : renderStartlist()
-        )}
       </View>
     </SafeAreaView>
   );
@@ -667,24 +782,9 @@ const styles = StyleSheet.create({
   classificationSubtabTextActive: {
     color: '#FFFFFF',
   },
-  startlistHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  tabContent: {
+    flex: 1,
     marginTop: 18,
-    marginBottom: 10,
-  },
-  startlistTitle: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  startlistCount: {
-    color: '#8B93A1',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   centerContainer: {
     flex: 1,
@@ -786,13 +886,33 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
+  resultTrailing: {
+    alignItems: 'flex-end',
+  },
   resultTime: {
-    maxWidth: 88,
     color: '#D1D5DB',
     fontSize: 12,
     fontWeight: '700',
     lineHeight: 18,
     textAlign: 'right',
+  },
+  resultGap: {
+    color: '#FF6B6B',
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
+    textAlign: 'right',
+  },
+  profileScroll: {
+    flex: 1,
+  },
+  profileScrollContent: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  profileImage: {
+    width: '100%',
+    height: 200,
   },
   teamPager: {
     flex: 1,
