@@ -45,7 +45,7 @@ interface Props {
 const DEFAULT_DATE_WINDOW_DAYS = 7;
 const DATE_WINDOW_EXTENSION = 14;
 const DATE_EDGE_THRESHOLD = 2;
-const TODAY_SHORTCUT_THRESHOLD_DAYS = 3;
+const TODAY_SHORTCUT_THRESHOLD_DAYS = 2;
 const TODAY_FADE_HEIGHT = 96;
 const TODAY_SHORTCUT_BOTTOM_PADDING = TODAY_FADE_HEIGHT + 16;
 const UPCOMING_BIG_RACES_EMPTY_DAY_LIMIT = 5;
@@ -383,7 +383,13 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.container} {...swipeResponder.panHandlers}>
         <View style={styles.hero}>
           <View style={styles.heroTopRow}>
-            <View style={styles.wordmarkWrap}>
+            <TouchableOpacity
+              style={styles.wordmarkWrap}
+              onPress={handleTodayPress}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Go to today"
+            >
               <View style={styles.wordmarkRow}>
                 <View style={styles.wordmarkLines} pointerEvents="none">
                   <View style={[styles.wordmarkLine, styles.wordmarkLineFaint]} />
@@ -399,7 +405,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
                   <Text style={styles.wordmarkTagline}>PRO CYCLING CALENDAR</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
             <View style={styles.heroControls}>
               <View style={styles.genderToggle}>
                 <TouchableOpacity
