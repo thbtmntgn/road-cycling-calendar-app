@@ -37,8 +37,35 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 
 ## Screenshots
 
-| | | |
-| --- | --- | --- |
-| ![Main - No races](docs/screenshot-main-empty-day.png) | ![Main - Race day](docs/screenshot-main-race-day.png) | ![Detail - Startlist](docs/screenshot-detail-startlist.png) |
-| ![Main - One-day race](docs/screenshot-main-oneday-upcoming.png) | ![Detail - Results](docs/screenshot-detail-results.png) | ![Main - Stage races](docs/screenshot-main-stage-day.png) |
-| ![Detail - Classification](docs/screenshot-detail-classification.png) | | |
+<table>
+  <tr>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.38.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.41.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.44.png" width="200"/></td>
+  </tr>
+  <tr>
+    <td align="center">Calendar — Race day</td>
+    <td align="center">Detail — Profile</td>
+    <td align="center">Detail — Startlist</td>
+  </tr>
+  <tr>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.06.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.13.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.16.png" width="200"/></td>
+  </tr>
+  <tr>
+    <td align="center">Detail — Stage results</td>
+    <td align="center">Detail — GC</td>
+    <td align="center">Detail — Points</td>
+  </tr>
+  <tr>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.18.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.20.png" width="200"/></td>
+    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.22.png" width="200"/></td>
+  </tr>
+  <tr>
+    <td align="center">Detail — KOM</td>
+    <td align="center">Detail — Youth</td>
+    <td align="center">Detail — Teams</td>
+  </tr>
+</table>
