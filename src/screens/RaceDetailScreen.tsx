@@ -247,8 +247,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   ).current;
 
   const teamTabsRef = useRef<FlatList<StartlistTeam>>(null);
-  const raceCompleted = !dayjs(currentDate).isAfter(dayjs(), 'day');
-  const [activeTab, setActiveTab] = useState<DetailTab>(raceCompleted ? 'results' : 'profile');
+  const [activeTab, setActiveTab] = useState<DetailTab>('profile');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
   const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
@@ -384,14 +383,17 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
       setActiveClassificationTab('gc');
       setActiveResultsTab('gc');
-      const raceCompleted = !dayjs(currentDate).isAfter(dayjs(), 'day');
-      if (raceCompleted && (isStageRace || resultData.length > 0)) {
-        setActiveTab('results');
-      } else if (raceCompleted) {
-        setActiveTab('startlist');
+      let raceHasResults = false;
+      if (isStageRace) {
+        const sortedLoaded = [...stagesData].sort(compareStageOrder);
+        const stagesOnDate = sortedLoaded.filter((s) => s.date === currentDate);
+        const stageOnDate = stagesOnDate.length > 0 ? stagesOnDate[stagesOnDate.length - 1] : null;
+        const key = stageOnDate?.stageNumber != null ? String(stageOnDate.stageNumber) : null;
+        raceHasResults = key != null && (stageResultsData[key]?.length ?? 0) > 0;
       } else {
-        setActiveTab('profile');
+        raceHasResults = resultData.length > 0;
       }
+      setActiveTab(raceHasResults ? 'results' : 'profile');
     } catch {
       setStartlist([]);
       setResults([]);
@@ -407,7 +409,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
       setActiveClassificationTab('gc');
       setActiveResultsTab('gc');
-      setActiveTab('startlist');
+      setActiveTab('profile');
       setError('Failed to load race details');
     } finally {
       setLoading(false);
