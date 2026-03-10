@@ -105,7 +105,17 @@ def compute_default_window(today: Optional[date] = None) -> tuple[str, str]:
     )
 
 
-def load_team_country_cache() -> dict[str, Optional[str]]:
+TeamCacheEntry = dict  # {"countryCode": str|None, "uciClass": str|None}
+
+
+def _valid_country_code(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().upper()
+    return normalized if len(normalized) == 2 and normalized.isalpha() else None
+
+
+def load_team_country_cache() -> dict[str, TeamCacheEntry]:
     if not TEAM_COUNTRY_CACHE_PATH.exists():
         return {}
 
@@ -117,25 +127,62 @@ def load_team_country_cache() -> dict[str, Optional[str]]:
     if not isinstance(raw, dict):
         return {}
 
-    cache: dict[str, Optional[str]] = {}
+    cache: dict[str, TeamCacheEntry] = {}
     for key, value in raw.items():
         if not isinstance(key, str):
             continue
         if value is None:
-            cache[key] = None
-            continue
-        if isinstance(value, str):
-            normalized = value.strip().upper()
-            cache[key] = normalized if len(normalized) == 2 and normalized.isalpha() else None
+            # Old format: None means country fetch failed
+            cache[key] = {"countryCode": None, "uciClass": None}
+        elif isinstance(value, str):
+            # Old format: bare country code string
+            cache[key] = {"countryCode": _valid_country_code(value), "uciClass": None}
+        elif isinstance(value, dict):
+            cache[key] = {
+                "countryCode": _valid_country_code(value.get("countryCode")),
+                "uciClass": value.get("uciClass") if isinstance(value.get("uciClass"), str) else None,
+            }
     return cache
 
 
-def write_team_country_cache(cache: dict[str, Optional[str]]) -> None:
+def write_team_country_cache(cache: dict[str, TeamCacheEntry]) -> None:
     TEAM_COUNTRY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     TEAM_COUNTRY_CACHE_PATH.write_text(
         json.dumps(cache, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+# Ordered from most to least specific to avoid false positives
+_UCI_CLASS_PATTERNS: list[tuple[str, str]] = [
+    ("women's world team", "WWT"),
+    ("women's pro team", "WPT"),
+    ("women's continental team", "WCT"),
+    ("uci worldteam", "WT"),
+    ("uci world team", "WT"),
+    ("uci proteam", "PT"),
+    ("uci pro team", "PT"),
+    ("uci continental team", "CT"),
+    ("uci continental", "CT"),
+]
+
+
+def extract_team_uci_class(soup: "BeautifulSoup") -> Optional[str]:
+    """Extract UCI team classification label (e.g. 'WT', 'PT', 'CT') from a PCS team page."""
+    # Check short text elements first to avoid matching unrelated long blocks
+    for el in soup.find_all(["li", "span", "td", "div", "p"]):
+        text = el.get_text(" ", strip=True).lower()
+        if len(text) > 80:
+            continue
+        for pattern, code in _UCI_CLASS_PATTERNS:
+            if pattern in text:
+                return code
+    # Fallback: full page text
+    page_text = soup.get_text(" ").lower()
+    for pattern, code in _UCI_CLASS_PATTERNS:
+        if pattern in page_text:
+            return code
+    return None
 
 
 def build_team_jersey_url(team_url: str) -> Optional[str]:
@@ -551,13 +598,15 @@ def fetch_startlist(
             if team_name not in teams:
                 country_code = None
                 jersey_image_url = None
+                uci_class = None
                 if team_url:
                     jersey_image_url = build_team_jersey_url(team_url)
                     lock = cache_lock or threading.Lock()
                     with lock:
-                        cached_country_code = team_country_cache.get(team_url, _CACHE_MISS)
-                    if cached_country_code is _CACHE_MISS:
+                        cached_entry = team_country_cache.get(team_url, _CACHE_MISS)
+                    if cached_entry is _CACHE_MISS:
                         fetched_code = None
+                        fetched_uci_class = None
                         try:
                             if delay > 0:
                                 time.sleep(delay)
@@ -573,17 +622,27 @@ def fetch_startlist(
                                     (c.upper() for c in classes if len(c) == 2 and c.isalpha()),
                                     None,
                                 )
+                            fetched_uci_class = extract_team_uci_class(team_soup)
                         except Exception:
-                            fetched_code = None
+                            pass
 
+                        new_entry: TeamCacheEntry = {
+                            "countryCode": fetched_code,
+                            "uciClass": fetched_uci_class,
+                        }
                         with lock:
-                            country_code = team_country_cache.setdefault(team_url, fetched_code)
+                            stored = team_country_cache.setdefault(team_url, new_entry)
+                        country_code = stored["countryCode"]
+                        uci_class = stored["uciClass"]
                     else:
-                        country_code = cached_country_code
+                        country_code = cached_entry["countryCode"]
+                        uci_class = cached_entry["uciClass"]
 
                 team_entry: dict = {"teamName": team_name, "riders": []}
                 if country_code:
                     team_entry["countryCode"] = country_code
+                if uci_class:
+                    team_entry["uciClass"] = uci_class
                 if jersey_image_url:
                     team_entry["jerseyImageUrl"] = jersey_image_url
                 teams[team_name] = team_entry

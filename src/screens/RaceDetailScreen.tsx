@@ -1,16 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -64,7 +63,6 @@ const CLASSIFICATION_TABS: { key: ClassificationTab; label: string }[] = [
   { key: 'teams', label: 'Teams' },
 ];
 
-const TEAM_SIDEBAR_WIDTH = 72;
 const SCREEN_PADDING = 16;
 
 const parseTimeToSeconds = (time: string): number | null => {
@@ -127,6 +125,24 @@ const getCountryFlag = (code?: string | null): string | null => {
     .join('');
 };
 
+const LEVEL_BADGE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  WT:  { bg: '#0d2010', color: '#4ade80', border: '#1a4a25' },
+  WWT: { bg: '#0d2010', color: '#4ade80', border: '#1a4a25' },
+  PT:  { bg: '#0d1020', color: '#818cf8', border: '#1e2455' },
+  WPT: { bg: '#0d1020', color: '#818cf8', border: '#1e2455' },
+  CT:  { bg: '#1a1005', color: '#fb923c', border: '#3d2408' },
+  WCT: { bg: '#1a1005', color: '#fb923c', border: '#3d2408' },
+};
+
+const LevelBadge: React.FC<{ level: string }> = ({ level }) => {
+  const c = LEVEL_BADGE_COLORS[level] ?? { bg: '#181018', color: '#a78bfa', border: '#2e1d4a' };
+  return (
+    <View style={[styles.levelBadge, { backgroundColor: c.bg, borderColor: c.border }]}>
+      <Text style={[styles.levelBadgeText, { color: c.color }]}>{level}</Text>
+    </View>
+  );
+};
+
 interface TeamJerseyProps {
   uri?: string;
 }
@@ -155,8 +171,6 @@ const TeamJersey: React.FC<TeamJerseyProps> = ({ uri }) => {
 const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }) => {
   const { race, selectedDate: selectedDateParam } = route.params;
   const selectedDate = selectedDateParam ?? dayjs().format('YYYY-MM-DD');
-  const { width } = useWindowDimensions();
-  const pagerWidth = Math.max(1, width - SCREEN_PADDING * 2);
   const isStageRace = race.startDate !== race.endDate;
   const [startlist, setStartlist] = useState<StartlistTeam[]>([]);
   const [results, setResults] = useState<RaceResult[]>([]);
@@ -168,8 +182,34 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [youthStandingsByStage, setYouthStandingsByStage] = useState<RaceYouthStandingsByStage>({});
   const [teamsStandingsByStage, setTeamsStandingsByStage] = useState<RaceTeamsStandingsByStage>({});
   const [teamsStageResultsByStage, setTeamsStageResultsByStage] = useState<RaceTeamsStandingsByStage>({});
+  const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Startlist swipe gesture
+  const dragX = useRef(new Animated.Value(0)).current;
+  const teamSwipeState = useRef({ index: 0, total: 0 });
+  teamSwipeState.current.index = selectedTeamIndex;
+  teamSwipeState.current.total = startlist.length;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 8,
+      onPanResponderMove: (_, gs) => dragX.setValue(gs.dx),
+      onPanResponderRelease: (_, gs) => {
+        const { index, total } = teamSwipeState.current;
+        let newIndex = index;
+        if (gs.dx < -60 && index < total - 1) newIndex = index + 1;
+        else if (gs.dx > 60 && index > 0) newIndex = index - 1;
+        if (newIndex !== index) {
+          teamSwipeState.current.index = newIndex;
+          setSelectedTeamIndex(newIndex);
+        }
+        Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
+      },
+    }),
+  ).current;
+  const teamTabsRef = useRef<FlatList<StartlistTeam>>(null);
   const isFutureRace = dayjs(race.startDate).isAfter(dayjs(), 'day');
   const [activeTab, setActiveTab] = useState<DetailTab>(isFutureRace ? 'profile' : 'startlist');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
@@ -231,6 +271,20 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     loadRaceData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: activeTab !== 'startlist' });
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (startlist.length > 0) {
+      teamTabsRef.current?.scrollToIndex({
+        index: selectedTeamIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }
+  }, [selectedTeamIndex, startlist.length]);
+
   const loadRaceData = async () => {
     try {
       setLoading(true);
@@ -269,6 +323,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             ? fetchTeamsStageResults(race.id)
             : Promise.resolve<RaceTeamsStandingsByStage>({}),
         ]);
+      setSelectedTeamIndex(0);
       setStartlist(startlistData);
       setResults(resultData);
       setStages(stagesData);
@@ -314,82 +369,6 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }
   };
 
-  const handlePagerScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (startlist.length === 0) {
-      return;
-    }
-
-    Math.round(event.nativeEvent.contentOffset.x / pagerWidth);
-  };
-
-  const renderTeamPage = ({
-    item,
-    index,
-  }: {
-    item: StartlistTeam;
-    index: number;
-  }) => {
-    const teamFlag = getCountryFlag(item.countryCode);
-
-    return (
-      <View style={[styles.teamPage, { width: pagerWidth }]}>
-        <View style={styles.teamPageInner}>
-          <View style={styles.teamCard}>
-            <View
-              style={[
-                styles.teamSidebar,
-                {
-                  backgroundColor: `${categoryColor}18`,
-                  borderRightColor: categoryColor,
-                },
-              ]}
-            >
-              <Text style={[styles.teamSidebarLabel, { color: categoryColor }]}>Team</Text>
-              <Text style={[styles.teamSidebarValue, { color: categoryColor }]}>
-                {index + 1} / {startlist.length}
-              </Text>
-            </View>
-
-            <ScrollView
-              style={styles.teamContentScroll}
-              contentContainerStyle={styles.teamContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              <View style={styles.teamNameRow}>
-                {teamFlag ? <Text style={styles.teamFlag}>{teamFlag}</Text> : null}
-                <Text style={styles.teamName}>{item.teamName}</Text>
-              </View>
-              <View style={styles.teamDivider} />
-              <View style={styles.ridersList}>
-                {item.riders.map((rider, riderIndex) => {
-                  const riderFlag = getCountryFlag(rider.nationality);
-
-                  return (
-                    <View
-                      key={`${item.teamName}-${rider.name}-${riderIndex}`}
-                      style={styles.riderRow}
-                    >
-                      <Text style={styles.riderIndex}>{riderIndex + 1}</Text>
-                      <View style={styles.riderIdentity}>
-                        {riderFlag ? (
-                          <Text style={styles.riderFlag}>{riderFlag}</Text>
-                        ) : (
-                          <View style={styles.riderFlagPlaceholder} />
-                        )}
-                        <Text style={styles.riderName}>{rider.name}</Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-              <TeamJersey uri={item.jerseyImageUrl} />
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    );
-  };
 
   const renderClassificationRow = (
     item: RaceResult,
@@ -454,7 +433,6 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     index: number;
   }) => {
     const isYouth = activeResultsTab === 'youth';
-    const isTeams = activeResultsTab === 'teams';
     const leaderSeconds = isYouth
       ? (generalStandingRows[0]?.time ? parseTimeToSeconds(generalStandingRows[0].time) : null)
       : (activeResultRows[0]?.time ? parseTimeToSeconds(activeResultRows[0].time) : null);
@@ -584,19 +562,99 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       );
     }
 
+    const currentTeam = startlist[selectedTeamIndex];
+    const teamFlag = getCountryFlag(currentTeam.countryCode);
+
     return (
-      <FlatList
-        data={startlist}
-        horizontal
-        pagingEnabled
-        decelerationRate="fast"
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(item, index) => `${item.teamName}-${index}`}
-        renderItem={renderTeamPage}
-        onMomentumScrollEnd={handlePagerScrollEnd}
-        style={styles.teamPager}
-        scrollEnabled={startlist.length > 1}
-      />
+      <View style={styles.startlistContainer}>
+        <Animated.View
+          style={[styles.teamCard, { transform: [{ translateX: dragX }] }]}
+          {...panResponder.panHandlers}
+        >
+          <ScrollView
+            style={styles.teamContentScroll}
+            contentContainerStyle={styles.teamContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <View style={styles.teamNameRow}>
+              {teamFlag ? <Text style={styles.teamFlag}>{teamFlag}</Text> : null}
+              <Text style={styles.teamName}>{currentTeam.teamName}</Text>
+              {currentTeam.uciClass ? <LevelBadge level={currentTeam.uciClass} /> : null}
+              <Text style={styles.teamCounter}>
+                {selectedTeamIndex + 1} / {startlist.length}
+              </Text>
+            </View>
+            <View style={styles.teamDivider} />
+            <View style={styles.ridersList}>
+              {currentTeam.riders.map((rider, riderIndex) => {
+                const riderFlag = getCountryFlag(rider.nationality);
+                return (
+                  <View
+                    key={`${currentTeam.teamName}-${rider.name}-${riderIndex}`}
+                    style={styles.riderRow}
+                  >
+                    <Text style={styles.riderIndex}>{riderIndex + 1}</Text>
+                    <View style={styles.riderIdentity}>
+                      {riderFlag ? (
+                        <Text style={styles.riderFlag}>{riderFlag}</Text>
+                      ) : (
+                        <View style={styles.riderFlagPlaceholder} />
+                      )}
+                      <Text style={styles.riderName}>{rider.name}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            <TeamJersey key={currentTeam.teamName} uri={currentTeam.jerseyImageUrl} />
+          </ScrollView>
+        </Animated.View>
+
+        {startlist.length > 1 ? (
+          <FlatList
+            ref={teamTabsRef}
+            data={startlist}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => `tab-${item.teamName}-${index}`}
+            style={styles.teamTabStrip}
+            contentContainerStyle={styles.teamTabStripContent}
+            onScrollToIndexFailed={() => {}}
+            renderItem={({ item, index }) => {
+              const isActive = index === selectedTeamIndex;
+              const flag = getCountryFlag(item.countryCode);
+              const abbr = item.teamName
+                .split(' ')[0]
+                .replace('|', '')
+                .substring(0, 3)
+                .toUpperCase();
+              return (
+                <TouchableOpacity
+                  onPress={() => setSelectedTeamIndex(index)}
+                  style={[
+                    styles.teamTab,
+                    isActive
+                      ? { backgroundColor: `${categoryColor}22`, borderColor: categoryColor }
+                      : null,
+                  ]}
+                  activeOpacity={0.75}
+                >
+                  {flag ? <Text style={styles.teamTabFlag}>{flag}</Text> : null}
+                  <Text
+                    style={[
+                      styles.teamTabLabel,
+                      isActive ? { color: '#fff' } : null,
+                    ]}
+                  >
+                    {abbr}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        ) : null}
+      </View>
     );
   };
 
@@ -914,45 +972,17 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
   },
-  teamPager: {
+  startlistContainer: {
     flex: 1,
-  },
-  teamPage: {
-    flex: 1,
-  },
-  teamPageInner: {
-    flex: 1,
-    paddingBottom: 12,
+    gap: 10,
   },
   teamCard: {
     flex: 1,
-    flexDirection: 'row',
     backgroundColor: '#171920',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#252833',
     overflow: 'hidden',
-  },
-  teamSidebar: {
-    width: TEAM_SIDEBAR_WIDTH,
-    borderRightWidth: 3,
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  teamSidebarLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    opacity: 0.9,
-    textTransform: 'uppercase',
-  },
-  teamSidebarValue: {
-    marginTop: 4,
-    fontSize: 16,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: -0.2,
   },
   teamContentScroll: {
     flex: 1,
@@ -965,7 +995,7 @@ const styles = StyleSheet.create({
   },
   teamNameRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
   },
   teamFlag: {
@@ -980,6 +1010,11 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.3,
   },
+  teamCounter: {
+    color: '#555',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   teamDivider: {
     height: 1,
     backgroundColor: '#252833',
@@ -988,6 +1023,46 @@ const styles = StyleSheet.create({
   },
   ridersList: {
     gap: 6,
+  },
+  teamTabStrip: {
+    flexGrow: 0,
+  },
+  teamTabStripContent: {
+    gap: 6,
+    paddingHorizontal: 2,
+    paddingBottom: 4,
+  },
+  teamTab: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#171920',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#252833',
+    gap: 3,
+    minWidth: 52,
+  },
+  levelBadge: {
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  levelBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  teamTabFlag: {
+    fontSize: 14,
+  },
+  teamTabLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#555',
+    letterSpacing: 0.5,
   },
   teamJerseySection: {
     marginTop: 16,

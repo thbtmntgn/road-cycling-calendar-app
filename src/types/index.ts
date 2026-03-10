@@ -101,6 +101,7 @@ export interface Rider {
 export interface StartlistTeam {
   teamName: string;
   countryCode?: string; // ISO 3166-1 alpha-2 team licence country
+  uciClass?: string;    // e.g. "WT", "PT", "CT", "WWT", "WPT", "WCT"
   jerseyImageUrl?: string;
   riders: Rider[];
 }
