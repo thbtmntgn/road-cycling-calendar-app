@@ -18,7 +18,10 @@ interface RacesListProps {
   onMainContentHeightChange?: (height: number) => void;
 }
 
-const sortRacesByCategoryPriority = (races: Race[]): Race[] =>
+const sortRacesByCategoryPriority = (
+  races: Race[],
+  stagesMap?: Record<string, Stage | null>,
+): Race[] =>
   [...races].sort((a, b) => {
     const priorityDiff =
       getRacePresentation(a.category).priority - getRacePresentation(b.category).priority;
@@ -26,6 +29,13 @@ const sortRacesByCategoryPriority = (races: Race[]): Race[] =>
     if (priorityDiff !== 0) {
       return priorityDiff;
     }
+
+    const timeA = a.startTime ?? stagesMap?.[a.id]?.startTime;
+    const timeB = b.startTime ?? stagesMap?.[b.id]?.startTime;
+
+    if (timeA && timeB) return timeA.localeCompare(timeB);
+    if (timeA) return -1;
+    if (timeB) return 1;
 
     return a.name.localeCompare(b.name);
   });
@@ -36,8 +46,11 @@ interface RaceGroup {
   races: Race[];
 }
 
-const groupRacesByCategory = (races: Race[]): RaceGroup[] => {
-  const sortedRaces = sortRacesByCategoryPriority(races);
+const groupRacesByCategory = (
+  races: Race[],
+  stagesMap?: Record<string, Stage | null>,
+): RaceGroup[] => {
+  const sortedRaces = sortRacesByCategoryPriority(races, stagesMap);
   const groups: RaceGroup[] = [];
 
   sortedRaces.forEach((race) => {
@@ -70,7 +83,10 @@ const RacesList: React.FC<RacesListProps> = ({
   onViewportHeightChange,
   onMainContentHeightChange,
 }) => {
-  const groupedRaces = React.useMemo(() => groupRacesByCategory(races), [races]);
+  const groupedRaces = React.useMemo(
+    () => groupRacesByCategory(races, stagesMap),
+    [races, stagesMap],
+  );
 
   if (races.length === 0 && showEmptyMessage) {
     return (
