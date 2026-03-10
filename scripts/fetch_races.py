@@ -185,16 +185,24 @@ def extract_team_uci_class(soup: "BeautifulSoup") -> Optional[str]:
     return None
 
 
-def build_team_jersey_url(team_url: str) -> Optional[str]:
-    normalized = (team_url or "").strip().rstrip("/")
-    if not normalized:
-        return None
-
-    team_slug = normalized.split("/")[-1]
-    if not team_slug:
-        return None
-
-    return f"https://www.procyclingstats.com/images/shirts/bx/eb/{team_slug}.png"
+def parse_jersey_map_from_html(html: str) -> dict[str, str]:
+    """
+    Parse {team_url_path: jersey_image_url} from a PCS startlist page HTML.
+    Each jersey <img> is wrapped in <a href="team/..."> — use that href as the key.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    jersey_map: dict[str, str] = {}
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or ""
+        if "images/shirts/" not in src:
+            continue
+        jersey_url = src if src.startswith("http") else f"https://www.procyclingstats.com/{src}"
+        parent_a = img.find_parent("a")
+        if parent_a:
+            team_href = parent_a.get("href", "")
+            if team_href.startswith("team/"):
+                jersey_map[team_href] = jersey_url
+    return jersey_map
 
 
 # For NC / WC / CC / OG, exclude non-road-race and U23 events based on slug keywords.
@@ -590,6 +598,9 @@ def fetch_startlist(
         startlist_obj = RaceStartlist(relative_url, html=html, update_html=False)
         raw = startlist_obj.startlist()
 
+        # Extract jersey image URLs from the already-fetched startlist HTML
+        startlist_jersey_map = parse_jersey_map_from_html(html)
+
         # Group flat rider list by team_name, preserving first-seen order
         teams: dict = OrderedDict()
         for rider in raw:
@@ -600,7 +611,7 @@ def fetch_startlist(
                 jersey_image_url = None
                 uci_class = None
                 if team_url:
-                    jersey_image_url = build_team_jersey_url(team_url)
+                    jersey_image_url = startlist_jersey_map.get(team_url)
                     lock = cache_lock or threading.Lock()
                     with lock:
                         cached_entry = team_country_cache.get(team_url, _CACHE_MISS)
@@ -1124,6 +1135,7 @@ def main():
     team_country_cache = load_team_country_cache()
     cache_lock = threading.Lock()
     initial_team_country_cache = json.dumps(team_country_cache, sort_keys=True)
+
 
     today_iso = today.isoformat()
     startlist_cutoff = (today + timedelta(days=7)).isoformat()

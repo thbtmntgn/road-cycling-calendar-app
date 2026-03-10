@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Image,
   PanResponder,
@@ -187,42 +186,45 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [error, setError] = useState<string | null>(null);
 
   // Stage tile swipe gesture
-  const stageDragX = useRef(new Animated.Value(0)).current;
   const stagePanState = useRef({ prevDate: null as string | null, nextDate: null as string | null });
   const stagePanResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) =>
-        isStageRace && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 8,
-      onPanResponderMove: (_, gs) => stageDragX.setValue(gs.dx),
+      onMoveShouldSetPanResponder: (_, gs) => {
+        if (!isStageRace) return false;
+        const h = Math.abs(gs.dx);
+        const v = Math.abs(gs.dy);
+        return h > 14 && h > v * 1.3;
+      },
       onPanResponderRelease: (_, gs) => {
+        if (Math.abs(gs.dy) > 72 || Math.abs(gs.dx) < 56) return;
         const { prevDate, nextDate } = stagePanState.current;
-        if (gs.dx < -60 && nextDate) setCurrentDate(nextDate);
-        else if (gs.dx > 60 && prevDate) setCurrentDate(prevDate);
-        Animated.spring(stageDragX, { toValue: 0, useNativeDriver: false }).start();
+        if (gs.dx < 0 && nextDate) setCurrentDate(nextDate);
+        else if (gs.dx > 0 && prevDate) setCurrentDate(prevDate);
       },
     }),
   ).current;
 
   // Startlist swipe gesture
-  const dragX = useRef(new Animated.Value(0)).current;
   const teamSwipeState = useRef({ index: 0, total: 0 });
   teamSwipeState.current.index = selectedTeamIndex;
   teamSwipeState.current.total = startlist.length;
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 8,
-      onPanResponderMove: (_, gs) => dragX.setValue(gs.dx),
+      onMoveShouldSetPanResponder: (_, gs) => {
+        const h = Math.abs(gs.dx);
+        const v = Math.abs(gs.dy);
+        return h > 14 && h > v * 1.3;
+      },
       onPanResponderRelease: (_, gs) => {
+        if (Math.abs(gs.dy) > 72 || Math.abs(gs.dx) < 56) return;
         const { index, total } = teamSwipeState.current;
         let newIndex = index;
-        if (gs.dx < -60 && index < total - 1) newIndex = index + 1;
-        else if (gs.dx > 60 && index > 0) newIndex = index - 1;
+        if (gs.dx < 0 && index < total - 1) newIndex = index + 1;
+        else if (gs.dx > 0 && index > 0) newIndex = index - 1;
         if (newIndex !== index) {
           teamSwipeState.current.index = newIndex;
           setSelectedTeamIndex(newIndex);
         }
-        Animated.spring(dragX, { toValue: 0, useNativeDriver: false }).start();
       },
     }),
   ).current;
@@ -613,11 +615,8 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     const teamFlag = getCountryFlag(currentTeam.countryCode);
 
     return (
-      <View style={styles.startlistContainer}>
-        <Animated.View
-          style={[styles.teamCard, { transform: [{ translateX: dragX }] }]}
-          {...panResponder.panHandlers}
-        >
+      <View style={styles.startlistContainer} {...panResponder.panHandlers}>
+        <View style={styles.teamCard}>
           <ScrollView
             style={styles.teamContentScroll}
             contentContainerStyle={styles.teamContent}
@@ -656,7 +655,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             </View>
             <TeamJersey key={currentTeam.teamName} uri={currentTeam.jerseyImageUrl} />
           </ScrollView>
-        </Animated.View>
+        </View>
 
         {startlist.length > 1 ? (
           <FlatList
@@ -709,17 +708,14 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <View style={styles.container} {...screenSwipeResponder.panHandlers}>
-        <Animated.View
-          style={{ transform: [{ translateX: stageDragX }] }}
-          {...(isStageRace ? stagePanResponder.panHandlers : {})}
-        >
+        <View {...(isStageRace ? stagePanResponder.panHandlers : {})}>
           <RaceItem
             race={race}
             currentStage={stageOnSelectedDate}
             currentStageProgress={stageProgressOnSelectedDate}
             totalStages={sortedStages.length || undefined}
           />
-        </Animated.View>
+        </View>
 
         {availableTabs.length > 1 ? (
           <View style={styles.tabSwitcher}>
