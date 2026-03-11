@@ -39,6 +39,17 @@ export const formatDateForDisplay = (dateString: string): string => {
   }
 };
 
+// Format date with relative prefix for headers — e.g. "Today, Wed 11 Mar" / "Fri 4 Apr"
+export const formatDateWithRelativeLabel = (dateString: string): string => {
+  const date = dayjs(dateString);
+  const today = dayjs();
+  const formatted = date.format('ddd D MMM');
+  if (date.isSame(today, 'day')) return `Today, ${formatted}`;
+  if (date.isSame(today.add(1, 'day'), 'day')) return `Tomorrow, ${formatted}`;
+  if (date.isSame(today.subtract(1, 'day'), 'day')) return `Yesterday, ${formatted}`;
+  return formatted;
+};
+
 // Get today's date in YYYY-MM-DD format
 export const getTodayDate = (): string => {
   return dayjs().format('YYYY-MM-DD');
