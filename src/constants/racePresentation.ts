@@ -93,11 +93,16 @@ export const getRacePresentation = (category: RaceCategory | string): RacePresen
   CATEGORY_PRESENTATION[category as RaceCategory] ?? DEFAULT_PRESENTATION;
 
 const MONUMENT_SLUGS = new Set([
+  // Men
   'milano-sanremo',
   'ronde-van-vlaanderen',
   'paris-roubaix',
   'liege-bastogne-liege',
   'il-lombardia',
+  // Women
+  'ronde-van-vlaanderen-we',
+  'paris-roubaix-we',
+  'liege-bastogne-liege-femmes',
 ]);
 
 const getRaceSlug = (race: Pick<Race, 'id' | 'pcsSlug'>): string | null => {
@@ -153,6 +158,9 @@ const MAJOR_TOUR_SLUGS = new Set([
   'criterium-du-dauphine-women',
   'itzulia-women',
   'itzulia-basque-country-women',
+  'prudential-ride-london-gp-we',
+  'vuelta-a-burgos-feminas',
+  'uae-tour-women',
 ]);
 
 const TOP_CLASSIC_SLUGS = new Set([
@@ -194,6 +202,8 @@ const TOP_CLASSIC_SLUGS = new Set([
   'grand-prix-cycliste-de-quebec-women',
   'grand-prix-cycliste-de-montreal-we',
   'grand-prix-cycliste-de-montreal-women',
+  'trofeo-alfredo-binda',
+  'womens-worldtour-ronde-van-drenthe',
 ]);
 
 export const isGrandTourRace = (race: Pick<Race, 'id' | 'pcsSlug'>): boolean => {

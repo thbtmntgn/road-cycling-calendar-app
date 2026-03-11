@@ -16,7 +16,7 @@ import {
   isMonumentRace,
   isTopClassicRace,
 } from '../constants/racePresentation';
-import { Gender, Race, Stage } from '../types';
+import { Race, Stage } from '../types';
 import { formatStageLabel } from '../utils/stageUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -244,7 +244,7 @@ const RaceItem: React.FC<RaceItemProps> = ({
       ? 'grand-tour'
       : isMajorTourRace(race)
         ? 'major-tour'
-        : isOneDay && race.gender === Gender.Men && isMonumentRace(race)
+        : isOneDay && isMonumentRace(race)
           ? 'monument'
           : isTopClassicRace(race)
             ? 'top-classic'
