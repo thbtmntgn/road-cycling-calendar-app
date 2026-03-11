@@ -572,7 +572,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             {imgEl}
           </ScrollView>
         ) : (
-          imgEl
+          <View style={{ borderRadius: 12, overflow: 'hidden' }}>{imgEl}</View>
         )}
         <Text style={styles.profileHint}>
           {profileExpanded ? '← drag to scroll · tap to fit →' : 'Tap to expand'}
