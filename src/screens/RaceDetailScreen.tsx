@@ -291,6 +291,35 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const stageResultRows =
     isStageRace && stageKey !== null ? stageResultsByStage[stageKey] ?? [] : [];
   const prevStageKey = stageKey !== null ? String(Number(stageKey) - 1) : null;
+
+  // Build a map of lowercase rider name → first stage number where they went absent.
+  // PCS omits DNF/DNS riders from stage results entirely (no explicit DNF row), so we
+  // detect abandonment by absence: a startlist rider missing from a completed stage's
+  // results is treated as having abandoned that stage. Names are compared lowercase to
+  // handle the case difference between startlist ("AYUSO Juan") and results ("Ayuso Juan").
+  const currentStageNum = stageNumberOnSelectedDate ?? Infinity;
+  const dnfRiderMap = new Map<string, number>(); // lowercase riderName → stage number
+  if (isStageRace && startlist.length > 0) {
+    const stagePresent = new Map<number, Set<string>>();
+    for (const [sk, rows] of Object.entries(stageResultsByStage)) {
+      const stageNum = Number(sk);
+      stagePresent.set(stageNum, new Set(rows.map((r) => r.riderName.toLowerCase())));
+    }
+    const completedStages = [...stagePresent.keys()]
+      .sort((a, b) => a - b)
+      .filter((n) => n < currentStageNum);
+    for (const team of startlist) {
+      for (const rider of team.riders) {
+        const nameLower = rider.name.toLowerCase();
+        for (const stageNum of completedStages) {
+          if (!stagePresent.get(stageNum)!.has(nameLower)) {
+            dnfRiderMap.set(nameLower, stageNum);
+            break;
+          }
+        }
+      }
+    }
+  }
   const youthRiderNames = new Set(
     (isStageRace && stageKey ? youthStandingsByStage[stageKey] ?? [] : []).map((r) => r.riderName),
   );
@@ -699,19 +728,32 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             <View style={styles.ridersList}>
               {currentTeam.riders.map((rider, riderIndex) => {
                 const riderFlag = getCountryFlag(rider.nationality);
+                const dnfStage = dnfRiderMap.get(rider.name.toLowerCase());
+                const isDnf = dnfStage !== undefined;
                 return (
                   <View
                     key={`${currentTeam.teamName}-${rider.name}-${riderIndex}`}
                     style={styles.riderRow}
                   >
-                    <Text style={styles.riderIndex}>{riderIndex + 1}</Text>
+                    <Text style={[styles.riderIndex, isDnf && styles.riderDnfMuted]}>
+                      {riderIndex + 1}
+                    </Text>
                     <View style={styles.riderIdentity}>
                       {riderFlag ? (
-                        <Text style={styles.riderFlag}>{riderFlag}</Text>
+                        <Text style={[styles.riderFlag, isDnf && styles.riderDnfMuted]}>
+                          {riderFlag}
+                        </Text>
                       ) : (
                         <View style={styles.riderFlagPlaceholder} />
                       )}
-                      <Text style={styles.riderName}>{rider.name}</Text>
+                      <Text style={[styles.riderName, isDnf && styles.riderDnfName]}>
+                        {rider.name}
+                      </Text>
+                      {isDnf ? (
+                        <View style={styles.dnfBadge}>
+                          <Text style={styles.dnfBadgeText}>DNF S{dnfStage}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 );
@@ -1219,6 +1261,32 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 16,
     lineHeight: 22,
+  },
+  riderDnfMuted: {
+    opacity: 0.3,
+  },
+  riderDnfName: {
+    flex: 1,
+    color: '#6B7280',
+    fontSize: 16,
+    lineHeight: 22,
+    textDecorationLine: 'line-through',
+    textDecorationColor: '#6B7280',
+  },
+  dnfBadge: {
+    backgroundColor: '#3D1A1A',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#7A2020',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    alignSelf: 'center',
+  },
+  dnfBadgeText: {
+    color: '#E57373',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });
 
