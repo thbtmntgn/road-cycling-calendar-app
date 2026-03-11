@@ -349,9 +349,24 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   if (canShowGeneralStandings) availableTabs.push('classification');
 
   useEffect(() => {
-    navigation.setOptions({ title: race.name });
     loadRaceData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const dateLabel = isStageRace ? currentDate : race.startDate;
+    navigation.setOptions({
+      headerTitle: () => (
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
+            {race.name}
+          </Text>
+          <Text style={{ color: '#8B93A1', fontSize: 12, fontWeight: '500' }}>
+            {dayjs(dateLabel).format('ddd D MMM')}
+          </Text>
+        </View>
+      ),
+    });
+  }, [currentDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Disable native back gesture for stage races (tile swipe handles horizontal gestures)

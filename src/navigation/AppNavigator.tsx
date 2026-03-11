@@ -24,7 +24,7 @@ function CalendarStackNavigator() {
       <CalendarStack.Screen
         name="RaceDetail"
         component={RaceDetailScreen}
-        options={{ title: '', headerBackTitle: 'Calendar' }}
+        options={{ title: '', headerBackTitle: 'Calendar', headerTitleAlign: 'center' }}
       />
     </CalendarStack.Navigator>
   );
