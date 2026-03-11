@@ -431,6 +431,46 @@ def _parse_profile_img_url(parser) -> Optional[str]:
     return None
 
 
+def _fetch_hires_profile_img_url(stage_url: str, scraper) -> Optional[str]:
+    """Fetch the hi-res profile image URL from the PCS /info/profiles sub-page.
+
+    The main stage page only embeds a thumbnail (~600px wide). The /info/profiles
+    sub-page carries the full-resolution image (typically ~830px wide with a
+    content-hash in the filename). Falls back to None on any error.
+    """
+    try:
+        # stage_url may be a full URL or a PCS-relative path
+        if stage_url.startswith("http"):
+            base = stage_url.rstrip("/")
+        else:
+            base = f"https://www.procyclingstats.com/{stage_url.lstrip('/')}"
+        # For one-day races the stage_url ends in /result; drop that suffix
+        if base.endswith("/result"):
+            base = base[: -len("/result")]
+        profiles_url = f"{base}/info/profiles"
+        resp = scraper.get(profiles_url, timeout=10)
+        if resp.status_code != 200:
+            return None
+        from selectolax.parser import HTMLParser
+        doc = HTMLParser(resp.text)
+        # PCS uses "-profile-" for mountain/hilly stages and "-sprint-" for flat stages
+        node = (
+            doc.css_first('img[src*="images/profiles/"][src*="-profile-"]')
+            or doc.css_first('img[src*="images/profiles/"][src*="-sprint-"]')
+        )
+        if node:
+            src = node.attributes.get("src", "")
+            if src:
+                if src.startswith("http"):
+                    return src
+                if src.startswith("/"):
+                    return f"https://www.procyclingstats.com{src}"
+                return f"https://www.procyclingstats.com/{src}"
+    except Exception:
+        pass
+    return None
+
+
 def pcs_to_stage_type(stage_type_str: str, profile_icon_str: str) -> Optional[str]:
     """Map PCS stage_type / profile_icon fields to app stageType values."""
     if stage_type_str == "ITT":
@@ -554,6 +594,15 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
             if elevation:
                 result["elevation"] = elevation
             profile_img_url = _parse_profile_img_url(detail.html)
+            # Try to upgrade to the hi-res version from /info/profiles
+            try:
+                import cloudscraper as _cs
+                _scraper = _cs.create_scraper()
+                hires = _fetch_hires_profile_img_url(slug, _scraper)
+                if hires:
+                    profile_img_url = hires
+            except Exception:
+                pass
             if profile_img_url:
                 result["profileImageUrl"] = profile_img_url
         except Exception:
@@ -710,6 +759,8 @@ def fetch_stages(
     stage_url last segment: "stage-1" → stageNumber 1, "prologue" → 0.
     """
     from procyclingstats import Stage as PCSStage
+    import cloudscraper as _cs
+    _scraper = _cs.create_scraper()
 
     if start_date == end_date:
         return None, None, None, None, None, None, None, None  # one-day race, no stages
@@ -769,7 +820,10 @@ def fetch_stages(
                     detail.profile_icon() or "",
                 )
                 elevation = detail.vertical_meters() or 0
-                profile_img_url = _parse_profile_img_url(detail.html)
+                profile_img_url = (
+                    _fetch_hires_profile_img_url(stage_url, _scraper)
+                    or _parse_profile_img_url(detail.html)
+                )
 
                 try:
                     stage_rows = detail.results(

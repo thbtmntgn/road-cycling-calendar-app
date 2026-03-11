@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   Image,
   PanResponder,
@@ -184,6 +185,9 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileImgNaturalSize, setProfileImgNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const [profileContainerH, setProfileContainerH] = useState(0);
+  const [profileExpanded, setProfileExpanded] = useState(false);
 
   // Stage tile swipe gesture
   const stagePanState = useRef({ prevDate: null as string | null, nextDate: null as string | null });
@@ -233,13 +237,15 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const screenSwipeResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => {
-        if (!isStageRace || screenSwipeRef.current.activeTab === 'startlist') return false;
+        const tab = screenSwipeRef.current.activeTab;
+        if (!isStageRace || tab === 'startlist' || tab === 'profile') return false;
         const h = Math.abs(gs.dx);
         const v = Math.abs(gs.dy);
         return h > 14 && h > v * 1.3;
       },
       onPanResponderRelease: (_, gs) => {
-        if (!isStageRace || screenSwipeRef.current.activeTab === 'startlist') return;
+        const tab = screenSwipeRef.current.activeTab;
+        if (!isStageRace || tab === 'startlist' || tab === 'profile') return;
         if (Math.abs(gs.dy) > 72 || Math.abs(gs.dx) < 56) return;
         const { prevDate, nextDate } = screenSwipeRef.current;
         if (gs.dx < 0 && nextDate) setCurrentDate(nextDate);
@@ -438,6 +444,10 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       }
     }
 
+    // Rank 1: show absolute time. Rank 2+: show gap only.
+    const displayTime = index === 0 ? trailingLabel : (gap ?? trailingLabel);
+    const isGap = index > 0 && gap !== null;
+
     return (
       <View
         style={[
@@ -458,18 +468,18 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           <Text style={[styles.resultRankText, { color: categoryColor }]}>{rankLabel}</Text>
         </View>
 
-        <View style={styles.resultIdentity}>
-          <View style={styles.resultNameRow}>
-            {riderFlag ? <Text style={styles.resultFlag}>{riderFlag}</Text> : null}
-            <Text style={styles.resultName}>{item.riderName}</Text>
-          </View>
-          {item.teamName ? <Text style={styles.resultTeam}>{item.teamName}</Text> : null}
-        </View>
+        {riderFlag ? <Text style={styles.resultFlag}>{riderFlag}</Text> : null}
 
-        <View style={styles.resultTrailing}>
-          {trailingLabel ? <Text style={styles.resultTime}>{trailingLabel}</Text> : null}
-          {gap ? <Text style={styles.resultGap}>{gap}</Text> : null}
-        </View>
+        <Text style={styles.resultName} numberOfLines={1}>
+          {item.riderName}
+          {item.teamName ? <Text style={styles.resultTeamInline}> · {item.teamName}</Text> : null}
+        </Text>
+
+        {displayTime ? (
+          <Text style={isGap ? styles.resultGap : styles.resultTime} numberOfLines={1}>
+            {displayTime}
+          </Text>
+        ) : null}
       </View>
     );
   };
@@ -488,11 +498,22 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     return renderClassificationRow(item, index, activeResultRows.length, leaderSeconds, false);
   };
 
-  const renderProfile = () => {
-    const profileImageUrl = isStageRace
-      ? stageOnSelectedDate?.profileImageUrl
-      : race.profileImageUrl;
+  const profileImageUrl = isStageRace
+    ? stageOnSelectedDate?.profileImageUrl
+    : race.profileImageUrl;
 
+  useEffect(() => {
+    setProfileImgNaturalSize(null);
+    setProfileExpanded(false);
+    if (!profileImageUrl) return;
+    Image.getSize(
+      profileImageUrl,
+      (w, h) => { if (w > 0 && h > 0) setProfileImgNaturalSize({ w, h }); },
+      () => {},
+    );
+  }, [profileImageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const renderProfile = () => {
     if (!profileImageUrl) {
       return (
         <View style={styles.centerContainer}>
@@ -502,18 +523,61 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       );
     }
 
-    return (
-      <ScrollView
-        style={styles.profileScroll}
-        contentContainerStyle={styles.profileScrollContent}
-        showsVerticalScrollIndicator={false}
+    const availableW = Dimensions.get('window').width - SCREEN_PADDING * 2;
+    const ratio = profileImgNaturalSize != null ? profileImgNaturalSize.w / profileImgNaturalSize.h : null;
+
+    const HINT_H = 20;
+    const maxH = profileContainerH > HINT_H ? profileContainerH - HINT_H : Math.round(Dimensions.get('window').height * 0.45);
+
+    let imgW: number;
+    let imgH: number;
+    if (profileExpanded && profileImgNaturalSize != null) {
+      // Expanded: native pixel dimensions, capped to available height (no upscaling, no overflow)
+      imgH = Math.min(profileImgNaturalSize.h, maxH);
+      imgW = Math.round(imgH * (profileImgNaturalSize.w / profileImgNaturalSize.h));
+    } else {
+      // Collapsed: fit full image within available width
+      imgW = availableW;
+      imgH = ratio != null ? Math.round(availableW / ratio) : Math.round(availableW * 0.5);
+    }
+
+    const needsScroll = profileExpanded && imgW > availableW;
+
+    const imgEl = (
+      <TouchableOpacity
+        onPress={() => setProfileExpanded((v) => !v)}
+        activeOpacity={0.9}
       >
         <Image
           source={{ uri: profileImageUrl }}
-          style={styles.profileImage}
+          style={{ width: imgW, height: imgH }}
           resizeMode="contain"
         />
-      </ScrollView>
+      </TouchableOpacity>
+    );
+
+    return (
+      <View
+        style={styles.profileContainer}
+        onLayout={(e) => setProfileContainerH(e.nativeEvent.layout.height)}
+      >
+        {needsScroll ? (
+          <ScrollView
+            horizontal
+            style={styles.profileHScroll}
+            contentContainerStyle={{ width: imgW }}
+            showsHorizontalScrollIndicator={false}
+            bounces
+          >
+            {imgEl}
+          </ScrollView>
+        ) : (
+          imgEl
+        )}
+        <Text style={styles.profileHint}>
+          {profileExpanded ? '← drag to scroll · tap to fit →' : 'Tap to expand'}
+        </Text>
+      </View>
     );
   };
 
@@ -934,9 +998,9 @@ const styles = StyleSheet.create({
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: '#171920',
     borderTopWidth: 1,
     borderLeftWidth: 1,
@@ -966,15 +1030,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.2,
   },
-  resultIdentity: {
-    flex: 1,
-    minWidth: 0,
-  },
-  resultNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
   resultFlag: {
     fontSize: 14,
     lineHeight: 18,
@@ -982,18 +1037,14 @@ const styles = StyleSheet.create({
   resultName: {
     flex: 1,
     color: '#F4F4F5',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
   },
-  resultTeam: {
+  resultTeamInline: {
     color: '#8B93A1',
     fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-  },
-  resultTrailing: {
-    alignItems: 'flex-end',
+    fontWeight: '400',
   },
   resultTime: {
     color: '#D1D5DB',
@@ -1004,21 +1055,23 @@ const styles = StyleSheet.create({
   },
   resultGap: {
     color: '#FF6B6B',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    lineHeight: 16,
+    lineHeight: 18,
     textAlign: 'right',
   },
-  profileScroll: {
+  profileContainer: {
     flex: 1,
+    gap: 8,
   },
-  profileScrollContent: {
-    paddingVertical: 16,
-    alignItems: 'center',
+  profileHScroll: {
+    borderRadius: 12,
+    overflow: 'hidden',
   },
-  profileImage: {
-    width: '100%',
-    height: 200,
+  profileHint: {
+    color: 'rgba(255,255,255,0.22)',
+    fontSize: 10,
+    textAlign: 'center',
   },
   startlistContainer: {
     flex: 1,
