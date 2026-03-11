@@ -536,10 +536,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     item: RaceResult;
     index: number;
   }) => {
-    const isYouth = activeResultsTab === 'youth';
-    const leaderSeconds = isYouth
-      ? (generalStandingRows[0]?.time ? parseTimeToSeconds(generalStandingRows[0].time) : null)
-      : (activeResultRows[0]?.time ? parseTimeToSeconds(activeResultRows[0].time) : null);
+    const leaderSeconds = activeResultRows[0]?.time ? parseTimeToSeconds(activeResultRows[0].time) : null;
     return renderClassificationRow(item, index, activeResultRows.length, leaderSeconds, false);
   };
 
