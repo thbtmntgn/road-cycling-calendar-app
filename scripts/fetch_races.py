@@ -979,17 +979,25 @@ def normalize_result_rows(
 ) -> Optional[list]:
     normalized: list[dict] = []
 
+    non_finisher_statuses = {"DNF", "DNS", "OTL", "DSQ"}
+
     for row in raw_rows:
         if len(normalized) >= limit:
             break
 
         rider_name = str(row.get(name_field) or "").strip()
         rank_value = row.get("rank")
-        if not rider_name or rank_value in (None, ""):
+        status_str = str(row.get("status") or "").strip() if include_status else ""
+
+        if not rider_name:
+            continue
+        # Include non-finisher rows (rank=None) only when their status is explicitly DNS/DNF/OTL/DSQ
+        is_non_finisher = rank_value is None and status_str in non_finisher_statuses
+        if rank_value in (None, "") and not is_non_finisher:
             continue
 
         entry: dict = {
-            "rankLabel": str(rank_value).strip(),
+            "rankLabel": str(rank_value).strip() if rank_value is not None else status_str,
             "riderName": rider_name,
         }
 

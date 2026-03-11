@@ -293,28 +293,42 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     isStageRace && stageKey !== null ? stageResultsByStage[stageKey] ?? [] : [];
   const prevStageKey = stageKey !== null ? String(Number(stageKey) - 1) : null;
 
-  // Build a map of lowercase rider name → first stage number where they went absent.
-  // PCS omits DNF/DNS riders from stage results entirely (no explicit DNF row), so we
-  // detect abandonment by absence: a startlist rider missing from a completed stage's
-  // results is treated as having abandoned that stage. Names are compared lowercase to
-  // handle the case difference between startlist ("AYUSO Juan") and results ("Ayuso Juan").
+  // Build a map of lowercase rider name → { stageNum, status } for their first non-finish.
+  // PCS stage results include explicit DNS/DNF/OTL/DSQ rows; we use those when available.
+  // For TTT stages, procyclingstats only returns riders who actually raced (_ttt_results never
+  // returns DNS rows), so absence from a TTT is always inferred as DNS (individual mid-TTT DNF
+  // doesn't happen in practice). For all other stages, absence falls back to DNF.
+  // Names are compared lowercase to handle the case difference between startlist ("AYUSO Juan")
+  // and results ("Ayuso Juan").
+  const NON_FINISH_STATUSES = new Set(['DNF', 'DNS', 'OTL', 'DSQ']);
   const currentStageNum = stageNumberOnSelectedDate ?? Infinity;
-  const dnfRiderMap = new Map<string, number>(); // lowercase riderName → stage number
+  const stageTypeByNum = new Map(stages.map((s) => [s.stageNumber, s.stageType]));
+  const dnfRiderMap = new Map<string, { stageNum: number; status: string }>(); // lowercase riderName → {stageNum, status}
   if (isStageRace && startlist.length > 0) {
-    const stagePresent = new Map<number, Set<string>>();
+    // Build per-stage maps: riderNameLower → status ('DF' for finishers, 'DNF'/'DNS'/etc. for non-finishers)
+    const stageRiderStatus = new Map<number, Map<string, string>>();
     for (const [sk, rows] of Object.entries(stageResultsByStage)) {
       const stageNum = Number(sk);
-      stagePresent.set(stageNum, new Set(rows.map((r) => r.riderName.toLowerCase())));
+      const riderStatusMap = new Map<string, string>();
+      for (const r of rows) {
+        riderStatusMap.set(r.riderName.toLowerCase(), r.status ?? 'DF');
+      }
+      stageRiderStatus.set(stageNum, riderStatusMap);
     }
-    const completedStages = [...stagePresent.keys()]
+    const completedStages = [...stageRiderStatus.keys()]
       .sort((a, b) => a - b)
-      .filter((n) => n < currentStageNum);
+      .filter((n) => n <= currentStageNum);
     for (const team of startlist) {
       for (const rider of team.riders) {
         const nameLower = rider.name.toLowerCase();
         for (const stageNum of completedStages) {
-          if (!stagePresent.get(stageNum)!.has(nameLower)) {
-            dnfRiderMap.set(nameLower, stageNum);
+          const riderStatus = stageRiderStatus.get(stageNum)!.get(nameLower);
+          if (riderStatus === undefined || NON_FINISH_STATUSES.has(riderStatus)) {
+            // Absent or explicitly marked as non-finisher.
+            // For TTT stages, absence always means DNS (procyclingstats never returns DNS rows for TTTs).
+            const isTTT = stageTypeByNum.get(stageNum) === 'ttt';
+            const resolvedStatus = riderStatus ?? (isTTT ? 'DNS' : 'DNF');
+            dnfRiderMap.set(nameLower, { stageNum, status: resolvedStatus });
             break;
           }
         }
@@ -741,8 +755,8 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             <View style={styles.ridersList}>
               {currentTeam.riders.map((rider, riderIndex) => {
                 const riderFlag = getCountryFlag(rider.nationality);
-                const dnfStage = dnfRiderMap.get(rider.name.toLowerCase());
-                const isDnf = dnfStage !== undefined;
+                const dnfEntry = dnfRiderMap.get(rider.name.toLowerCase());
+                const isDnf = dnfEntry !== undefined;
                 return (
                   <View
                     key={`${currentTeam.teamName}-${rider.name}-${riderIndex}`}
@@ -764,7 +778,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                       </Text>
                       {isDnf ? (
                         <View style={styles.dnfBadge}>
-                          <Text style={styles.dnfBadgeText}>DNF S{dnfStage}</Text>
+                          <Text style={styles.dnfBadgeText}>{dnfEntry!.status} S{dnfEntry!.stageNum}</Text>
                         </View>
                       ) : null}
                     </View>
