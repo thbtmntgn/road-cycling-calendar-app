@@ -7,7 +7,21 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
+import dayjs from 'dayjs';
 import { formatDateForDisplay } from '../utils/dateUtils';
+
+const getRelativeDateSub = (dateString: string): string | null => {
+  const date = dayjs(dateString);
+  const today = dayjs();
+  if (
+    date.isSame(today, 'day') ||
+    date.isSame(today.add(1, 'day'), 'day') ||
+    date.isSame(today.subtract(1, 'day'), 'day')
+  ) {
+    return date.format('D MMM');
+  }
+  return null;
+};
 
 interface DateSelectorProps {
   dates: string[];
@@ -57,6 +71,14 @@ const DateSelector: React.FC<DateSelectorProps> = ({ dates, selectedDate, onSele
             >
               {formatDateForDisplay(date)}
             </Text>
+            {getRelativeDateSub(date) !== null && (
+              <Text
+                style={[styles.dateSubText, date === selectedDate && styles.selectedDateSubText]}
+                numberOfLines={1}
+              >
+                {getRelativeDateSub(date)}
+              </Text>
+            )}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -97,6 +119,15 @@ const styles = StyleSheet.create({
   selectedDateText: {
     color: '#0A0A0C',
     fontWeight: '700',
+  },
+  dateSubText: {
+    color: '#5A6370',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  selectedDateSubText: {
+    color: '#4A5058',
   },
 });
 
