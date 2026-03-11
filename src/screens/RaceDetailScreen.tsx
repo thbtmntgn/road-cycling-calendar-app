@@ -735,8 +735,8 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     const teamFlag = getCountryFlag(currentTeam.countryCode);
 
     return (
-      <View style={styles.startlistContainer} {...panResponder.panHandlers}>
-        <View style={styles.teamCard}>
+      <View style={styles.startlistContainer}>
+        <View style={styles.teamCard} {...panResponder.panHandlers}>
           <ScrollView
             style={styles.teamContentScroll}
             contentContainerStyle={styles.teamContent}
