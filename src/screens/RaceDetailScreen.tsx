@@ -43,6 +43,7 @@ import {
   StartlistTeam,
 } from '../types';
 import { compareStageOrder, getStageProgressIndex } from '../utils/stageUtils';
+import { formatDateForDisplay } from '../utils/dateUtils';
 
 // Self-contained param list — works from both CalendarStack and FavoritesStack
 type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
@@ -361,7 +362,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             {race.name}
           </Text>
           <Text style={{ color: '#8B93A1', fontSize: 12, fontWeight: '500' }}>
-            {dayjs(dateLabel).format('ddd D MMM')}
+            {formatDateForDisplay(dateLabel)}
           </Text>
         </View>
       ),
