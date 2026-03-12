@@ -757,13 +757,19 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                 const riderFlag = getCountryFlag(rider.nationality);
                 const dnfEntry = dnfRiderMap.get(rider.name.toLowerCase());
                 const isDnf = dnfEntry !== undefined;
+                const riderBibLabel = rider.bibNumber?.toString() ?? '-';
                 return (
                   <View
                     key={`${currentTeam.teamName}-${rider.name}-${riderIndex}`}
                     style={styles.riderRow}
                   >
-                    <Text style={[styles.riderIndex, isDnf && styles.riderDnfMuted]}>
-                      {riderIndex + 1}
+                    <Text
+                      style={[styles.riderIndex, isDnf && styles.riderDnfMuted]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >
+                      {riderBibLabel}
                     </Text>
                     <View style={styles.riderIdentity}>
                       {riderFlag ? (
@@ -1276,7 +1282,8 @@ const styles = StyleSheet.create({
     width: 16,
   },
   riderIndex: {
-    width: 16,
+    width: 28,
+    flexShrink: 0,
     color: '#6B7280',
     fontSize: 12,
     fontWeight: '700',

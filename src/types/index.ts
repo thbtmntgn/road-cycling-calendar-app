@@ -94,6 +94,7 @@ export interface Stage {
 // Startlist types
 export interface Rider {
   name: string;
+  bibNumber?: number;
   pcsSlug?: string;
   nationality?: string; // ISO 3166-1 alpha-2, e.g. "FR"
 }

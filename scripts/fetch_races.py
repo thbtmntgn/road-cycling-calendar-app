@@ -711,6 +711,10 @@ def fetch_startlist(
             if rider_name:
                 rider_entry: dict = {"name": rider_name}
 
+                rider_number = rider.get("rider_number")
+                if isinstance(rider_number, int):
+                    rider_entry["bibNumber"] = rider_number
+
                 rider_url = rider.get("rider_url", "")
                 if rider_url:
                     rider_entry["pcsSlug"] = rider_url
