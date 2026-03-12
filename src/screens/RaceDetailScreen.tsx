@@ -490,13 +490,18 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     totalRows: number,
     leaderSeconds: number | null = null,
     showLeaderGap = false,
+    hideNonFinisherTrailingLabel = false,
   ) => {
     const riderFlag = getCountryFlag(item.nationality);
-    const trailingLabel = item.time || item.status;
     const rankLabel = item.rankLabel;
+    const statusLabel = item.status?.trim() ?? '';
+    const isNonFinisherRow =
+      hideNonFinisherTrailingLabel &&
+      (NON_FINISH_STATUSES.has(statusLabel) || NON_FINISH_STATUSES.has(rankLabel));
+    const trailingLabel = isNonFinisherRow ? null : (item.time || item.status);
 
     let gap: string | null = null;
-    if ((index > 0 || showLeaderGap) && leaderSeconds !== null && item.time) {
+    if ((index > 0 || showLeaderGap) && leaderSeconds !== null && item.time && !isNonFinisherRow) {
       const itemSeconds = parseTimeToSeconds(item.time);
       if (itemSeconds !== null) {
         gap = formatGap(Math.max(0, itemSeconds - leaderSeconds));
@@ -504,7 +509,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }
 
     // Rank 1: show absolute time. Rank 2+: show gap only.
-    const displayTime = index === 0 ? trailingLabel : (gap ?? trailingLabel);
+    const displayTime = isNonFinisherRow ? null : (index === 0 ? trailingLabel : (gap ?? trailingLabel));
     const isGap = index > 0 && gap !== null;
 
     return (
@@ -551,7 +556,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     index: number;
   }) => {
     const leaderSeconds = activeResultRows[0]?.time ? parseTimeToSeconds(activeResultRows[0].time) : null;
-    return renderClassificationRow(item, index, activeResultRows.length, leaderSeconds, false);
+    return renderClassificationRow(item, index, activeResultRows.length, leaderSeconds, false, true);
   };
 
   const profileImageUrl = isStageRace
