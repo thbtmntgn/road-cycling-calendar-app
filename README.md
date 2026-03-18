@@ -11,7 +11,7 @@ A mobile application for tracking professional cycling races.
 
 ## Technology Stack
 
-- React Native 0.83 / Expo 55
+- React Native 0.81.5 / Expo 54
 - TypeScript
 - React Navigation v7
 - dayjs

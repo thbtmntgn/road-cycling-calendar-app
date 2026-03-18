@@ -513,7 +513,7 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
         start_date = race.startdate()
         end_date = race.enddate()
         country = race.nationality()
-        pcs_category = race.category()  # e.g. "Men Elite", "Women Elite"
+        pcs_category = race.category()  # e.g. "Men Elite", "Woman Elite" (singular)
     except Exception as exc:
         print(f"  ! Skipping {slug}: {exc}")
         return None
