@@ -116,6 +116,27 @@ const formatDuration = (seconds: number): string => {
 
 const formatGap = (seconds: number): string => `+${formatDuration(seconds)}`;
 
+const SAME_TIME_MARKERS = new Set([',,', "''", '‘‘', '’’']);
+
+const isSameTimeMarker = (time?: string | null): boolean =>
+  SAME_TIME_MARKERS.has((time ?? '').trim());
+
+const formatGapFromTimeValue = (time: string | undefined, leaderSeconds: number | null): string | null => {
+  const normalizedTime = time?.trim();
+  if (!normalizedTime || isSameTimeMarker(normalizedTime) || leaderSeconds === null) {
+    return null;
+  }
+
+  const timeSeconds = parseTimeToSeconds(normalizedTime);
+  if (timeSeconds === null) {
+    return null;
+  }
+
+  return timeSeconds >= leaderSeconds
+    ? formatGap(Math.max(0, timeSeconds - leaderSeconds))
+    : formatGap(timeSeconds);
+};
+
 const computeStageEarned = (
   current: RaceResult[],
   previous: RaceResult[],
@@ -199,7 +220,7 @@ const LeaderJerseyIcon: React.FC<{ jerseyKey: LeaderJerseyKey }> = ({ jerseyKey 
         },
       ]}
     >
-      <Ionicons name="shirt" size={12} color={jerseyMeta.textColor} />
+      <Ionicons name="shirt" size={10} color={jerseyMeta.textColor} />
     </View>
   );
 };
@@ -456,6 +477,31 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     teams: isStageRace && stageKey ? (teamsStageResultsByStage[stageKey] ?? []) : [],
   };
   const activeResultRows = resultRowsByTab[activeResultsTab];
+  const resolveRepeatedGapDisplay = (
+    rows: RaceResult[],
+    index: number,
+    leaderSeconds: number | null,
+    hideNonFinisherTrailingLabel: boolean
+  ): string | null => {
+    for (let previousIndex = index - 1; previousIndex >= 0; previousIndex -= 1) {
+      const previousItem = rows[previousIndex];
+      const previousStatusLabel = previousItem.status?.trim() ?? '';
+      const previousIsNonFinisherRow =
+        hideNonFinisherTrailingLabel &&
+        (NON_FINISH_STATUSES.has(previousStatusLabel) ||
+          NON_FINISH_STATUSES.has(previousItem.rankLabel));
+      if (previousIsNonFinisherRow) {
+        continue;
+      }
+
+      const previousGap = formatGapFromTimeValue(previousItem.time, leaderSeconds);
+      if (previousGap) {
+        return previousGap;
+      }
+    }
+
+    return leaderSeconds !== null ? formatGap(0) : null;
+  };
   const canShowResults = isStageRace || results.length > 0;
   const canShowGeneralStandings = isStageRace;
   const availableTabs: DetailTab[] = ['profile', 'startlist'];
@@ -581,6 +627,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     item: RaceResult,
     index: number,
     totalRows: number,
+    rows: RaceResult[],
     leaderSeconds: number | null = null,
     showLeaderGap = false,
     hideNonFinisherTrailingLabel = false
@@ -595,19 +642,18 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       ? (currentLeaderJerseysByRider.get(getResultIdentity(item)) ?? [])
       : [];
     const trailingLabel = isNonFinisherRow ? null : item.time || item.status;
+    const gap =
+      !isNonFinisherRow && item.time && (index > 0 || showLeaderGap)
+        ? isSameTimeMarker(item.time)
+          ? resolveRepeatedGapDisplay(rows, index, leaderSeconds, hideNonFinisherTrailingLabel)
+          : formatGapFromTimeValue(item.time, leaderSeconds)
+        : null;
 
-    let gap: string | null = null;
-    if ((index > 0 || showLeaderGap) && leaderSeconds !== null && item.time && !isNonFinisherRow) {
-      const itemSeconds = parseTimeToSeconds(item.time);
-      if (itemSeconds !== null) {
-        gap = formatGap(Math.max(0, itemSeconds - leaderSeconds));
-      }
-    }
-
-    // Rank 1: show absolute time. Rank 2+: show gap only.
+    // Rank 1 keeps its source value. Later rows prefer a resolved gap, whether PCS
+    // provides an absolute time, an explicit gap, or a same-as-previous marker.
     const displayTime = isNonFinisherRow
       ? null
-      : index === 0
+      : index === 0 && !showLeaderGap
         ? trailingLabel
         : (gap ?? trailingLabel);
     const isGap = index > 0 && gap !== null;
@@ -623,30 +669,40 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
         <View
           style={[
             styles.resultRankBadge,
-            {
-              backgroundColor: `${categoryColor}18`,
-              borderColor: `${categoryColor}35`,
-            },
+            index === 0 ? styles.resultRankBadgeLeader : null,
+            index > 0 && index < 3 ? styles.resultRankBadgePodium : null,
+            isNonFinisherRow ? styles.resultRankBadgeStatus : null,
           ]}
         >
-          <Text style={[styles.resultRankText, { color: categoryColor }]}>{rankLabel}</Text>
+          <Text
+            style={[
+              styles.resultRankText,
+              index === 0 ? styles.resultRankTextLeader : null,
+              index > 0 && index < 3 ? styles.resultRankTextPodium : null,
+              isNonFinisherRow ? styles.resultRankTextStatus : null,
+            ]}
+          >
+            {rankLabel}
+          </Text>
         </View>
 
         {riderFlag ? <Text style={styles.resultFlag}>{riderFlag}</Text> : null}
 
         <View style={styles.resultIdentity}>
-          <Text style={styles.resultName} numberOfLines={1}>
-            {item.riderName}
-            {item.teamName ? <Text style={styles.resultTeamInline}> · {item.teamName}</Text> : null}
-          </Text>
+          <View style={styles.resultPrimaryLine}>
+            <Text style={styles.resultName} numberOfLines={1}>
+              {item.riderName}
+              {item.teamName ? <Text style={styles.resultTeamInline}> · {item.teamName}</Text> : null}
+            </Text>
 
-          {leaderJerseyKeys.length > 0 ? (
-            <View style={styles.leaderJerseyRow}>
-              {leaderJerseyKeys.map((jerseyKey) => (
-                <LeaderJerseyIcon key={`${item.riderName}-${jerseyKey}`} jerseyKey={jerseyKey} />
-              ))}
-            </View>
-          ) : null}
+            {leaderJerseyKeys.length > 0 ? (
+              <View style={styles.leaderJerseyInline}>
+                {leaderJerseyKeys.map((jerseyKey) => (
+                  <LeaderJerseyIcon key={`${item.riderName}-${jerseyKey}`} jerseyKey={jerseyKey} />
+                ))}
+              </View>
+            ) : null}
+          </View>
         </View>
 
         {displayTime ? (
@@ -666,6 +722,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       item,
       index,
       activeResultRows.length,
+      activeResultRows,
       leaderSeconds,
       false,
       true
@@ -797,7 +854,13 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     const leaderSeconds = activeClassificationRows[0]?.time
       ? parseTimeToSeconds(activeClassificationRows[0].time)
       : null;
-    return renderClassificationRow(item, index, activeClassificationRows.length, leaderSeconds);
+    return renderClassificationRow(
+      item,
+      index,
+      activeClassificationRows.length,
+      activeClassificationRows,
+      leaderSeconds
+    );
   };
 
   const activeClassificationLabel =
@@ -1190,8 +1253,8 @@ const styles = StyleSheet.create({
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: '#171920',
     borderTopWidth: 1,
@@ -1209,18 +1272,44 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 18,
   },
   resultRankBadge: {
-    minWidth: 42,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    minWidth: 32,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#12141A',
+    borderColor: '#2A2A31',
+    flexShrink: 0,
+  },
+  resultRankBadgeLeader: {
+    backgroundColor: '#192018',
+    borderColor: '#31492A',
+  },
+  resultRankBadgePodium: {
+    backgroundColor: '#181B22',
+    borderColor: '#343C48',
+  },
+  resultRankBadgeStatus: {
+    backgroundColor: '#241618',
+    borderColor: '#5C2A30',
   },
   resultRankText: {
-    fontSize: 14,
+    color: '#A1A1AA',
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: -0.2,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  resultRankTextLeader: {
+    color: '#D9F99D',
+  },
+  resultRankTextPodium: {
+    color: '#E4E4E7',
+  },
+  resultRankTextStatus: {
+    color: '#FCA5A5',
   },
   resultFlag: {
     fontSize: 14,
@@ -1229,9 +1318,15 @@ const styles = StyleSheet.create({
   resultIdentity: {
     flex: 1,
     minWidth: 0,
-    gap: 4,
+  },
+  resultPrimaryLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
   },
   resultName: {
+    flex: 1,
     color: '#F4F4F5',
     fontSize: 14,
     fontWeight: '600',
@@ -1256,15 +1351,15 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'right',
   },
-  leaderJerseyRow: {
+  leaderJerseyInline: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    flexShrink: 0,
   },
   leaderJerseyBadge: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',

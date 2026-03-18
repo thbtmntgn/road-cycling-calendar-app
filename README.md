@@ -39,9 +39,9 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
 
 <table>
   <tr>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.38.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.41.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.41.44.png" width="200"/></td>
+    <td><img src="docs/screenshot-calendar-race-day.png" width="200" alt="Calendar — Race day"/></td>
+    <td><img src="docs/screenshot-detail-profile.png" width="200" alt="Detail — Profile"/></td>
+    <td><img src="docs/screenshot-detail-startlist.png" width="200" alt="Detail — Startlist"/></td>
   </tr>
   <tr>
     <td align="center">Calendar — Race day</td>
@@ -49,9 +49,9 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
     <td align="center">Detail — Startlist</td>
   </tr>
   <tr>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.06.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.13.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.16.png" width="200"/></td>
+    <td><img src="docs/screenshot-detail-stage-results.png" width="200" alt="Detail — Stage results"/></td>
+    <td><img src="docs/screenshot-detail-gc.png" width="200" alt="Detail — GC"/></td>
+    <td><img src="docs/screenshot-detail-points.png" width="200" alt="Detail — Points"/></td>
   </tr>
   <tr>
     <td align="center">Detail — Stage results</td>
@@ -59,9 +59,9 @@ Do not launch the app with `npx expo start` directly. The npm scripts run a pre-
     <td align="center">Detail — Points</td>
   </tr>
   <tr>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.18.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.20.png" width="200"/></td>
-    <td><img src="docs/Simulator%20Screenshot%20-%20iPhone%2017%20-%202026-03-10%20at%2011.42.22.png" width="200"/></td>
+    <td><img src="docs/screenshot-detail-kom.png" width="200" alt="Detail — KOM"/></td>
+    <td><img src="docs/screenshot-detail-youth.png" width="200" alt="Detail — Youth"/></td>
+    <td><img src="docs/screenshot-detail-teams.png" width="200" alt="Detail — Teams"/></td>
   </tr>
   <tr>
     <td align="center">Detail — KOM</td>
