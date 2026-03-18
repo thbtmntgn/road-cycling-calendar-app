@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { RACE_SUBGROUP_COLORS, RaceSubgroupKey } from '../constants/raceColors';
 import { Race } from '../types';
+import { countryToFlag } from '../utils/flagUtils';
 
 export type UpcomingBigRaceType = RaceSubgroupKey;
 
@@ -25,18 +26,6 @@ interface UpcomingBigRacesListProps {
   bottomPadding?: number;
   filteredOutByFilters?: boolean;
 }
-
-const countryToFlag = (code: string): string => {
-  if (!code || code.length !== 2) {
-    return '🏁';
-  }
-
-  return code
-    .toUpperCase()
-    .split('')
-    .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
-    .join('');
-};
 
 const formatRaceDate = (date: string): string => dayjs(date).format('ddd DD MMM');
 

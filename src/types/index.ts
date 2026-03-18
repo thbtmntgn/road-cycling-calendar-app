@@ -48,7 +48,7 @@ export enum RaceFilterGroup {
 // Race data interface
 export interface Race {
   id: string;
-  pcsSlug?: string; // PCS URL slug, used for future RaceStartlist fetch
+  pcsSlug?: string;
   name: string;
   startDate: string;
   endDate: string;
@@ -64,11 +64,6 @@ export interface Race {
   stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt'; // one-day races only
   elevation?: number; // vertical metres, one-day races only
   profileImageUrl?: string; // PCS elevation profile image URL
-}
-
-// Grouped races by date
-export interface RacesByDate {
-  [date: string]: Race[];
 }
 
 // API response format

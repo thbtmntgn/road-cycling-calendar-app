@@ -444,9 +444,8 @@ def _fetch_hires_profile_img_url(stage_url: str, scraper) -> Optional[str]:
             base = stage_url.rstrip("/")
         else:
             base = f"https://www.procyclingstats.com/{stage_url.lstrip('/')}"
-        # For one-day races the stage_url ends in /result; drop that suffix
-        if base.endswith("/result"):
-            base = base[: -len("/result")]
+        # For one-day races the stage_url ends in /result — keep it.
+        # Hi-res images are at {stage_url}/info/profiles, not the race root.
         profiles_url = f"{base}/info/profiles"
         resp = scraper.get(profiles_url, timeout=10)
         if resp.status_code != 200:
@@ -598,7 +597,7 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
             try:
                 import cloudscraper as _cs
                 _scraper = _cs.create_scraper()
-                hires = _fetch_hires_profile_img_url(slug, _scraper)
+                hires = _fetch_hires_profile_img_url(f"{slug}/result", _scraper)
                 if hires:
                     profile_img_url = hires
             except Exception:

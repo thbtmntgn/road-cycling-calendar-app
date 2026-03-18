@@ -51,8 +51,6 @@ const getLegacyUciClass = (
       return isOneDayRace ? '1.UWT' : '2.UWT';
     case RaceCategory.WomenWorldTour:
       return isOneDayRace ? '1.WWT' : '2.WWT';
-    case 'WorldChampionship':
-    case 'WomenWorldChampionship':
     case RaceCategory.SpecialEvent:
     case RaceCategory.WomenSpecialEvent:
       return 'WC';
@@ -130,9 +128,6 @@ const normalizeCategory = (
     case RaceCategory.ContinentalClass1:
     case RaceCategory.ContinentalClass2:
       return category;
-    case 'WorldChampionship':
-    case 'WomenWorldChampionship':
-      return getCategoryForFilterGroup(RaceFilterGroup.SpecialEvent, gender);
     case 'Continental':
       return getCategoryForFilterGroup(filterGroup, gender);
     default:

@@ -18,6 +18,7 @@ import {
 } from '../constants/racePresentation';
 import { Race, Stage } from '../types';
 import { formatStageLabel } from '../utils/stageUtils';
+import { countryToFlag } from '../utils/flagUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 type RaceTierBadgeType = RaceSubgroupKey;
@@ -30,12 +31,6 @@ interface RaceItemProps {
   totalStages?: number;
 }
 
-const countryToFlag = (code: string): string =>
-  code
-    .toUpperCase()
-    .split('')
-    .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-    .join('');
 
 
 // ─── StageTypeTag ─────────────────────────────────────────────────────────────

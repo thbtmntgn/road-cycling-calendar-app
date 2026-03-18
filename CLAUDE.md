@@ -28,7 +28,7 @@ React Native + Expo app for tracking professional cycling races. Uses stack navi
 - `RacesList` groups races by `RaceCategory` with collapsible sections. Categories are defined in `src/types/index.ts`.
 - Accent color: `#4CAF50` (green). Dark theme throughout.
 
-**Tech stack:** React Native 0.83 / Expo 55, TypeScript strict mode, React Navigation v7, dayjs.
+**Tech stack:** React Native 0.81.5 / Expo 54, TypeScript strict mode, React Navigation v7, dayjs.
 
 **PCS scraper notes (`scripts/fetch_races.py`):**
 

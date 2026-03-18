@@ -45,7 +45,7 @@ import {
 import { compareStageOrder, getStageProgressIndex } from '../utils/stageUtils';
 import { formatDateWithRelativeLabel } from '../utils/dateUtils';
 
-// Self-contained param list — works from both CalendarStack and FavoritesStack
+// Self-contained param list for CalendarStack
 type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
 
 interface RaceDetailScreenProps {
