@@ -27,8 +27,38 @@ import {
   RaceFilterState,
 } from '../constants/raceFilters';
 import { getDateRange, getTodayDate } from '../utils/dateUtils';
-import { fetchRaces, getRacesForDate, filterRacesByGender, fetchStages } from '../api/racesApi';
+import {
+  fetchRaces,
+  getRacesForDate,
+  filterRacesByGender,
+  fetchStages,
+  getResultsSync,
+  getStageResultsSync,
+  getGcStandingsSync,
+} from '../api/racesApi';
 import { Race, Gender, Stage } from '../types';
+import { CompletedRaceResult } from '../components/RaceItem';
+
+const parseTimeToSeconds = (time: string): number | null => {
+  const parts = time.split(':').map(Number);
+  if (parts.length === 3 && parts.every((n) => !isNaN(n)))
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2 && parts.every((n) => !isNaN(n)))
+    return parts[0] * 60 + parts[1];
+  return null;
+};
+
+const computeGap = (first: string, second: string): string | null => {
+  const t1 = parseTimeToSeconds(first);
+  const t2 = parseTimeToSeconds(second);
+  if (t1 === null || t2 === null || t2 < t1) return null;
+  const diff = t2 - t1;
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
 import { CalendarStackParamList } from '../navigation/types';
 import {
   isGrandTourRace,
@@ -274,6 +304,47 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     setSelectedDate(date);
   }, []);
 
+  const completedResultsMap = useMemo(() => {
+    const map: Record<string, CompletedRaceResult> = {};
+    for (const race of filteredRaces) {
+      const isOneDay = race.startDate === race.endDate;
+      if (isOneDay) {
+        const results = getResultsSync(race.id);
+        if (results.length > 0) {
+          const winnerGap =
+            results[1]?.time && results[0]?.time
+              ? computeGap(results[0].time, results[1].time)
+              : null;
+          map[race.id] = { winner: results[0], winnerGap };
+        }
+      } else {
+        const stage = stagesMap[race.id];
+        if (stage != null) {
+          const stageNum = String(stage.stageNumber);
+          const stageRes = getStageResultsSync(race.id, stageNum);
+          const gcRes = getGcStandingsSync(race.id, stageNum);
+          if (stageRes.length > 0 || gcRes.length > 0) {
+            const winnerGap =
+              stageRes[1]?.time && stageRes[0]?.time
+                ? computeGap(stageRes[0].time, stageRes[1].time)
+                : null;
+            const gcGap =
+              gcRes[1]?.time && gcRes[0]?.time
+                ? computeGap(gcRes[0].time, gcRes[1].time)
+                : null;
+            map[race.id] = {
+              winner: stageRes[0] ?? null,
+              winnerGap,
+              gcLeader: gcRes[0] ?? null,
+              gcGap,
+            };
+          }
+        }
+      }
+    }
+    return map;
+  }, [filteredRaces, stagesMap]);
+
   const todayDate = getTodayDate();
   const racesOnSelectedDate = useMemo(
     () => getRacesForDate(races, selectedDate),
@@ -491,6 +562,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             stagesMap={stagesMap}
             stageProgressMap={stageProgressMap}
             stageCountsMap={stageCountsMap}
+            completedResultsMap={completedResultsMap}
             bottomPadding={showBottomShortcut ? TODAY_SHORTCUT_BOTTOM_PADDING : 28}
             onViewportHeightChange={setRacesViewportHeight}
             onMainContentHeightChange={setRacesMainContentHeight}

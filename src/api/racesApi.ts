@@ -237,6 +237,15 @@ export const fetchTeamsStageResults = async (
   return localData.teamsStageResults?.[raceId] ?? {};
 };
 
+export const getResultsSync = (raceId: string): RaceResult[] =>
+  localData.results?.[raceId] ?? [];
+
+export const getStageResultsSync = (raceId: string, stageNumber: string): RaceResult[] =>
+  localData.stageResults?.[raceId]?.[stageNumber] ?? [];
+
+export const getGcStandingsSync = (raceId: string, stageNumber: string): RaceResult[] =>
+  localData.gcStandings?.[raceId]?.[stageNumber] ?? [];
+
 // Filter races by gender
 export const filterRacesByGender = (races: Race[], gender: Gender | null): Race[] => {
   if (!gender) return races;

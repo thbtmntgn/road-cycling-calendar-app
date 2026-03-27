@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import RaceItem from './RaceItem';
+import RaceItem, { CompletedRaceResult } from './RaceItem';
 import { getRacePresentation, RacePresentation } from '../constants/racePresentation';
 import { Race, Stage } from '../types';
 
@@ -12,6 +12,7 @@ interface RacesListProps {
   stagesMap?: Record<string, Stage | null>;
   stageProgressMap?: Record<string, number | null>;
   stageCountsMap?: Record<string, number>;
+  completedResultsMap?: Record<string, CompletedRaceResult>;
   bottomPadding?: number;
   footer?: React.ReactNode;
   onViewportHeightChange?: (height: number) => void;
@@ -78,6 +79,7 @@ const RacesList: React.FC<RacesListProps> = ({
   stagesMap,
   stageProgressMap,
   stageCountsMap,
+  completedResultsMap,
   bottomPadding = 28,
   footer,
   onViewportHeightChange,
@@ -140,6 +142,7 @@ const RacesList: React.FC<RacesListProps> = ({
                     currentStage={stagesMap ? stagesMap[race.id] : undefined}
                     currentStageProgress={stageProgressMap?.[race.id]}
                     totalStages={stageCountsMap?.[race.id]}
+                    completedResult={completedResultsMap?.[race.id]}
                   />
                 ))}
               </View>

@@ -110,6 +110,7 @@ export interface RaceResult {
   nationality?: string; // ISO 3166-1 alpha-2
   teamName?: string;
   time?: string;
+  bonus?: string;  // bonus seconds in "H:MM:SS" format, stage results only
   status?: string;
 }
 

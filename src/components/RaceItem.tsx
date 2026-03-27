@@ -16,12 +16,20 @@ import {
   isMonumentRace,
   isTopClassicRace,
 } from '../constants/racePresentation';
-import { Race, Stage } from '../types';
+import { Race, RaceResult, Stage } from '../types';
 import { formatStageLabel } from '../utils/stageUtils';
 import { countryToFlag } from '../utils/flagUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 type RaceTierBadgeType = RaceSubgroupKey;
+
+export type CompletedRaceResult = {
+  winner: RaceResult | null;
+  winnerGap?: string | null;
+  /** Defined (even if null) for stage races; absent for one-day races */
+  gcLeader?: RaceResult | null;
+  gcGap?: string | null;
+};
 
 interface RaceItemProps {
   race: Race;
@@ -29,7 +37,27 @@ interface RaceItemProps {
   currentStage?: Stage | null;
   currentStageProgress?: number | null;
   totalStages?: number;
+  completedResult?: CompletedRaceResult;
 }
+
+/** Converts "H:MM:SS" or "M:SS" to cycling notation: "3h43′33″", "1′23″", "15″" */
+const formatCyclingTime = (time: string): string => {
+  const parts = time.split(':').map(Number);
+  if (parts.some(isNaN)) return time;
+  let h = 0, m = 0, s = 0;
+  if (parts.length === 3) [h, m, s] = parts;
+  else if (parts.length === 2) [m, s] = parts;
+  else return time;
+  if (h > 0) return `${h}h${m.toString().padStart(2, '0')}′${s.toString().padStart(2, '0')}″`;
+  if (m > 0) return `${m}′${s.toString().padStart(2, '0')}″`;
+  return `${s}″`;
+};
+
+const reverseRiderName = (name: string): string => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length <= 1) return name;
+  return `${parts[parts.length - 1]} ${parts.slice(0, -1).join(' ')}`;
+};
 
 
 
@@ -75,6 +103,7 @@ const tagStyles = StyleSheet.create({
     color: '#A0AABB',
   },
 });
+
 
 // ─── RaceTierBadge ────────────────────────────────────────────────────────────
 
@@ -224,6 +253,7 @@ const RaceItem: React.FC<RaceItemProps> = ({
   currentStage,
   currentStageProgress,
   totalStages,
+  completedResult,
 }) => {
   const isOneDay = race.startDate === race.endDate;
   const categoryColor = getCategoryAccentColor(race.category, isOneDay);
@@ -276,6 +306,8 @@ const RaceItem: React.FC<RaceItemProps> = ({
     hasActiveStage && totalStages != null && currentStageProgress != null;
   const hasRoute = !!(departure || arrival);
   const hasBottomRightTierBadge = raceTier != null;
+  const isCompleted = completedResult != null;
+  const isStageRaceResult = isCompleted && 'gcLeader' in completedResult!;
 
   return (
     <TouchableOpacity
@@ -344,6 +376,86 @@ const RaceItem: React.FC<RaceItemProps> = ({
             </View>
           ) : null}
         </View>
+
+        {isCompleted && (completedResult!.winner || completedResult!.gcLeader) ? (
+          <>
+            <View style={resultStyles.divider} />
+            <View style={resultStyles.pillsRow}>
+              {completedResult!.winner ? (
+                <View style={[resultStyles.pill, resultStyles.winnerPill]}>
+                  <MaterialCommunityIcons name="trophy" size={14} color="#A07800" />
+                  <View style={resultStyles.pillBody}>
+                    <Text style={[resultStyles.pillLabel, resultStyles.winnerLabel]}>
+                      {isStageRaceResult ? 'STAGE WINNER' : 'WINNER'}
+                    </Text>
+                    <Text style={resultStyles.pillName} numberOfLines={1}>
+                      {completedResult!.winner.nationality
+                        ? countryToFlag(completedResult!.winner.nationality) + ' '
+                        : ''}
+                      {reverseRiderName(completedResult!.winner.riderName)}
+                    </Text>
+                    <Text style={resultStyles.pillMeta} numberOfLines={1}>
+                      {completedResult!.winner.teamName ?? ''}
+                    </Text>
+                  </View>
+                  {completedResult!.winner.time ? (
+                    <View style={resultStyles.pillTimeBlock}>
+                      <View style={resultStyles.timeLabels}>
+                        <Text style={resultStyles.timeKey}>Time</Text>
+                        {completedResult!.winnerGap ? <Text style={resultStyles.timeKey}>Gap</Text> : null}
+                      </View>
+                      <View style={resultStyles.timeValues}>
+                        <Text style={resultStyles.pillTime}>
+                          {formatCyclingTime(completedResult!.winner.time)}
+                        </Text>
+                        {completedResult!.winnerGap ? (
+                          <Text style={resultStyles.pillGap}>
+                            {formatCyclingTime(completedResult!.winnerGap)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+              {completedResult!.gcLeader ? (
+                <View style={[resultStyles.pill, resultStyles.gcPill]}>
+                  <View style={resultStyles.gcDot} />
+                  <View style={resultStyles.pillBody}>
+                    <Text style={[resultStyles.pillLabel, resultStyles.gcLabel]}>GC LEADER</Text>
+                    <Text style={resultStyles.pillName} numberOfLines={1}>
+                      {completedResult!.gcLeader.nationality
+                        ? countryToFlag(completedResult!.gcLeader.nationality) + ' '
+                        : ''}
+                      {reverseRiderName(completedResult!.gcLeader.riderName)}
+                    </Text>
+                    <Text style={resultStyles.pillMeta} numberOfLines={1}>
+                      {completedResult!.gcLeader.teamName ?? ''}
+                    </Text>
+                  </View>
+                  {completedResult!.gcLeader.time ? (
+                    <View style={resultStyles.pillTimeBlock}>
+                      <View style={resultStyles.timeLabels}>
+                        <Text style={resultStyles.timeKey}>Time</Text>
+                        {completedResult!.gcGap ? <Text style={resultStyles.timeKey}>Gap</Text> : null}
+                      </View>
+                      <View style={resultStyles.timeValues}>
+                        <Text style={resultStyles.pillTime}>
+                          {formatCyclingTime(completedResult!.gcLeader.time)}
+                        </Text>
+                        {completedResult!.gcGap ? (
+                          <Text style={resultStyles.pillGap}>
+                            {formatCyclingTime(completedResult!.gcGap)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+          </>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -440,6 +552,105 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 10,
     fontWeight: '600',
+  },
+});
+
+const resultStyles = StyleSheet.create({
+  divider: {
+    height: 1,
+    backgroundColor: '#1E2130',
+  },
+  pillsRow: {
+    flexDirection: 'column',
+    gap: 6,
+  },
+  pill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    borderWidth: 1,
+  },
+  winnerPill: {
+    backgroundColor: '#181200',
+    borderColor: '#2C2000',
+  },
+  gcPill: {
+    backgroundColor: '#001508',
+    borderColor: '#002C10',
+  },
+  gcDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#F5C518',
+    flexShrink: 0,
+  },
+  pillBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pillLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  winnerLabel: {
+    color: '#F5C518',
+  },
+  gcLabel: {
+    color: '#4ade80',
+  },
+  pillName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 14,
+  },
+  pillMeta: {
+    fontSize: 9,
+    color: '#444',
+    marginTop: 2,
+  },
+  pillTimeBlock: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    alignSelf: 'center',
+    gap: 5,
+  },
+  timeLabels: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  timeValues: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  timeKey: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: '#444',
+    lineHeight: 14,
+  },
+  pillTime: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#666',
+    lineHeight: 14,
+  },
+  pillGap: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4ade80',
+    lineHeight: 14,
   },
 });
 

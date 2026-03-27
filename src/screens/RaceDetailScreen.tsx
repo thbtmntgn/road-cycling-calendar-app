@@ -116,6 +116,22 @@ const formatDuration = (seconds: number): string => {
 
 const formatGap = (seconds: number): string => `+${formatDuration(seconds)}`;
 
+const groupResultsByTime = (
+  rows: RaceResult[],
+): Array<{ timeSecs: number | null; items: RaceResult[] }> => {
+  const groups: Array<{ timeSecs: number | null; items: RaceResult[] }> = [];
+  for (const row of rows) {
+    const timeSecs = row.time != null ? parseTimeToSeconds(row.time) : null;
+    const last = groups[groups.length - 1];
+    if (last && last.timeSecs === timeSecs && timeSecs !== null) {
+      last.items.push(row);
+    } else {
+      groups.push({ timeSecs, items: [row] });
+    }
+  }
+  return groups;
+};
+
 const SAME_TIME_MARKERS = new Set([',,', "''", '‘‘', '’’']);
 
 const isSameTimeMarker = (time?: string | null): boolean =>
@@ -135,6 +151,51 @@ const formatGapFromTimeValue = (time: string | undefined, leaderSeconds: number 
   return timeSeconds >= leaderSeconds
     ? formatGap(Math.max(0, timeSeconds - leaderSeconds))
     : formatGap(timeSeconds);
+};
+
+const formatBonus = (bonus: string | undefined): string | null => {
+  if (!bonus) return null;
+  const secs = parseTimeToSeconds(bonus);
+  if (!secs || secs === 0) return null;
+  return `−${secs}"`;
+};
+
+const formatBonusSecs = (secs: number | undefined): string | null => {
+  if (!secs || secs === 0) return null;
+  return `−${secs}"`;
+};
+
+const findInferredGap = (
+  finisherRows: RaceResult[],
+  reclassifiedIndex: number,
+  leaderSeconds: number,
+): string | null => {
+  for (const delta of [-1, 1, -2, 2, -3, 3]) {
+    const j = reclassifiedIndex + delta;
+    if (j < 0 || j >= finisherRows.length) continue;
+    const neighbour = finisherRows[j];
+    const secs = neighbour.time ? parseTimeToSeconds(neighbour.time) : null;
+    if (secs === null || secs === leaderSeconds) continue;
+    return formatGapFromTimeValue(neighbour.time, leaderSeconds);
+  }
+  return null;
+};
+
+const computeClassificationDeltaMap = (
+  current: RaceResult[],
+  previous: RaceResult[],
+): Map<string, { rankChange: number; earnedPoints: number }> => {
+  const prevRankByName = new Map(previous.map((r, i) => [r.riderName, i + 1]));
+  const prevPtsByName = new Map(previous.map((r) => [r.riderName, Number(r.time) || 0]));
+  const out = new Map<string, { rankChange: number; earnedPoints: number }>();
+  current.forEach((r, i) => {
+    const prevRank = prevRankByName.get(r.riderName);
+    out.set(r.riderName, {
+      rankChange: prevRank !== undefined ? prevRank - (i + 1) : 0,
+      earnedPoints: (Number(r.time) || 0) - (prevPtsByName.get(r.riderName) ?? 0),
+    });
+  });
+  return out;
 };
 
 const computeStageEarned = (
@@ -353,6 +414,9 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [activeTab, setActiveTab] = useState<DetailTab>('profile');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
   const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
+  const [activeGapLabel, setActiveGapLabel] = useState<string | null>(null);
+  const [activeIsReclassified, setActiveIsReclassified] = useState(false);
+  const groupHeaderYs = useRef<Map<number, { y: number; label: string; isReclassified: boolean }>>(new Map());
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
   const sortedStages = [...stages].sort(compareStageOrder);
   const sortedUniqueDates = [...new Set(sortedStages.map((s) => s.date))].sort();
@@ -411,7 +475,41 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const activeClassificationRows = classificationRowsByTab[activeClassificationTab];
   const stageResultRows =
     isStageRace && stageKey !== null ? (stageResultsByStage[stageKey] ?? []) : [];
+  const cumulativeBonusMap = new Map<string, number>();
+  if (isStageRace && stageKey !== null) {
+    const currentStageNum = Number(stageKey);
+    for (let s = 1; s <= currentStageNum; s++) {
+      for (const r of stageResultsByStage[String(s)] ?? []) {
+        if (r.bonus) {
+          const secs = parseTimeToSeconds(r.bonus);
+          if (secs && secs > 0) {
+            cumulativeBonusMap.set(r.riderName, (cumulativeBonusMap.get(r.riderName) ?? 0) + secs);
+          }
+        }
+      }
+    }
+  }
   const prevStageKey = stageKey !== null ? String(Number(stageKey) - 1) : null;
+  const gcDeltaMap = computeClassificationDeltaMap(
+    generalStandingRows,
+    prevStageKey ? (gcStandingsByStage[prevStageKey] ?? []) : [],
+  );
+  const pointsDeltaMap = computeClassificationDeltaMap(
+    pointsStandingRows,
+    prevStageKey ? (pointsStandingsByStage[prevStageKey] ?? []) : [],
+  );
+  const komDeltaMap = computeClassificationDeltaMap(
+    komStandingRows,
+    prevStageKey ? (komStandingsByStage[prevStageKey] ?? []) : [],
+  );
+  const youthDeltaMap = computeClassificationDeltaMap(
+    youthStandingRows,
+    prevStageKey ? (youthStandingsByStage[prevStageKey] ?? []) : [],
+  );
+  const teamsDeltaMap = computeClassificationDeltaMap(
+    teamsStandingRows,
+    prevStageKey ? (teamsStandingsByStage[prevStageKey] ?? []) : [],
+  );
 
   // Build a map of lowercase rider name → { stageNum, status } for their first non-finish.
   // PCS stage results include explicit DNS/DNF/OTL/DSQ rows; we use those when available.
@@ -543,6 +641,12 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }
   }, [selectedTeamIndex, startlist.length]);
 
+  useEffect(() => {
+    setActiveGapLabel(null);
+    setActiveIsReclassified(false);
+    groupHeaderYs.current.clear();
+  }, [activeResultsTab, currentDate]);
+
   const loadRaceData = async () => {
     try {
       setLoading(true);
@@ -630,7 +734,10 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     rows: RaceResult[],
     leaderSeconds: number | null = null,
     showLeaderGap = false,
-    hideNonFinisherTrailingLabel = false
+    hideNonFinisherTrailingLabel = false,
+    rankChange?: number,
+    earnedPoints?: number,
+    bonusSecs?: number,
   ) => {
     const riderFlag = getCountryFlag(item.nationality);
     const rankLabel = item.rankLabel;
@@ -651,12 +758,14 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
     // Rank 1 keeps its source value. Later rows prefer a resolved gap, whether PCS
     // provides an absolute time, an explicit gap, or a same-as-previous marker.
+    const isSameTime = index > 0 && gap === formatGap(0);
+    const resolvedGap = isSameTime ? 's.t.' : gap;
     const displayTime = isNonFinisherRow
       ? null
       : index === 0 && !showLeaderGap
         ? trailingLabel
-        : (gap ?? trailingLabel);
-    const isGap = index > 0 && gap !== null;
+        : (resolvedGap ?? trailingLabel);
+    const isGap = index > 0 && resolvedGap !== null;
 
     return (
       <View
@@ -684,6 +793,11 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           >
             {rankLabel}
           </Text>
+          {rankChange !== undefined && rankChange !== 0 ? (
+            <Text style={rankChange > 0 ? styles.rankChangeUp : styles.rankChangeDown}>
+              {rankChange > 0 ? `▲${rankChange}` : `▼${Math.abs(rankChange)}`}
+            </Text>
+          ) : null}
         </View>
 
         {riderFlag ? <Text style={styles.resultFlag}>{riderFlag}</Text> : null}
@@ -705,27 +819,30 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           </View>
         </View>
 
-        {displayTime ? (
-          <Text style={isGap ? styles.resultGap : styles.resultTime} numberOfLines={1}>
-            {displayTime}
-          </Text>
+        {displayTime || bonusSecs ? (
+          <View style={styles.resultTimeColumn}>
+            {displayTime ? (
+              <Text
+                style={[
+                  isGap ? styles.resultGap : styles.resultTime,
+                  isSameTime ? styles.resultSameTime : null,
+                ]}
+                numberOfLines={1}
+              >
+                {displayTime}
+              </Text>
+            ) : null}
+            {earnedPoints !== undefined && earnedPoints > 0 ? (
+              <Text style={styles.earnedPointsText}>+{earnedPoints} pts</Text>
+            ) : null}
+            {bonusSecs ? (
+              <View style={styles.bonusBadgeNeutral}>
+                <Text style={styles.bonusBadgeTextNeutral}>{formatBonusSecs(bonusSecs)}</Text>
+              </View>
+            ) : null}
+          </View>
         ) : null}
       </View>
-    );
-  };
-
-  const renderResultRow = ({ item, index }: { item: RaceResult; index: number }) => {
-    const leaderSeconds = activeResultRows[0]?.time
-      ? parseTimeToSeconds(activeResultRows[0].time)
-      : null;
-    return renderClassificationRow(
-      item,
-      index,
-      activeResultRows.length,
-      activeResultRows,
-      leaderSeconds,
-      false,
-      true
     );
   };
 
@@ -832,15 +949,254 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       );
     }
 
+    const DNS_DNF_LABELS = new Set(['DNS', 'DNF', 'OTL', 'DSQ', 'AB', 'NQ']);
+    const isNonFinisher = (r: RaceResult) => DNS_DNF_LABELS.has((r.rankLabel ?? '').toUpperCase());
+
+    const finisherRows = activeResultRows.filter((r) => !isNonFinisher(r));
+    const dnsDnfRows = activeResultRows.filter(isNonFinisher);
+
+    const leaderSeconds = finisherRows[0]?.time
+      ? parseTimeToSeconds(finisherRows[0].time)
+      : null;
+
+    const groups = groupResultsByTime(finisherRows);
+
+    const interGroupGaps = groups.map((g, i) =>
+      i === 0 ? 0 : (g.timeSecs ?? 0) - (groups[i - 1].timeSecs ?? 0),
+    );
+    const maxGap = Math.max(...interGroupGaps.slice(1), 1);
+    const calcMargin = (gapSecs: number) =>
+      6 + Math.round((gapSecs / maxGap) * 30);
+
+    const checkerCols = 10;
+    const checkerSize = 6;
+    const renderChecker = (startLight: boolean) => (
+      <View
+        style={{
+          width: checkerCols * checkerSize,
+          height: 2 * checkerSize,
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: 1,
+          flexShrink: 0,
+        }}
+      >
+        {[0, 1].map((row) => (
+          <View key={row} style={{ flexDirection: 'row' }}>
+            {Array.from({ length: checkerCols }).map((_, col) => {
+              const isLight = (col + row) % 2 === (startLight ? 0 : 1);
+              return (
+                <View
+                  key={col}
+                  style={{
+                    width: checkerSize,
+                    height: checkerSize,
+                    backgroundColor: isLight ? '#9CA3AF' : '#252833',
+                  }}
+                />
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    );
+
+    const showPointsValue = activeResultsTab === 'points' || activeResultsTab === 'kom';
+
+    const items: React.ReactNode[] = [];
+    let globalIndex = 0;
+    let finisherRowOffset = 0;
+    let leaderTimeLabel: string | null = null;
+
+    const renderResultRow = (item: RaceResult, idx: number, isFirst: boolean, isLast: boolean) => {
+      const riderFlag = getCountryFlag(item.nationality);
+      return (
+        <View
+          key={`${item.rankLabel}-${item.riderName}-${idx}`}
+          style={[
+            styles.resultRow,
+            isFirst ? styles.resultRowFirst : null,
+            isLast ? styles.resultRowLast : null,
+            !isFirst && !isLast ? styles.resultRowMid : null,
+          ]}
+        >
+          <View style={styles.resultRankBadge}>
+            <Text style={styles.resultRankText}>{item.rankLabel}</Text>
+          </View>
+
+          {riderFlag ? (
+            <Text style={styles.resultFlag}>{riderFlag}</Text>
+          ) : null}
+
+          <Text style={styles.resultName} numberOfLines={1}>
+            {item.riderName}
+            {item.teamName ? (
+              <Text style={styles.resultTeamInline}> · {item.teamName}</Text>
+            ) : null}
+          </Text>
+
+          {!showPointsValue && item.bonus ? (
+            <View style={styles.bonusBadge}>
+              <Text style={styles.bonusBadgeText}>{formatBonus(item.bonus)}</Text>
+            </View>
+          ) : null}
+          {showPointsValue && item.time ? (
+            <Text style={styles.resultTime} numberOfLines={1}>+{item.time}</Text>
+          ) : null}
+        </View>
+      );
+    };
+
+    if (showPointsValue) {
+      return (
+        <View style={styles.resultsList}>
+          <ScrollView
+            contentContainerStyle={styles.resultsListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {finisherRows.map((item, i) =>
+              renderResultRow(item, i, i === 0, i === finisherRows.length - 1)
+            )}
+          </ScrollView>
+        </View>
+      );
+    }
+
+    groups.forEach((group, groupIdx) => {
+      const startIndex = globalIndex;
+      const groupStartInFinishers = finisherRowOffset;
+      globalIndex += group.items.length;
+      finisherRowOffset += group.items.length;
+
+      const mt = groupIdx === 0 ? 0 : calcMargin(interGroupGaps[groupIdx]);
+      if (mt > 0) {
+        items.push(<View key={`spacer-${groupIdx}`} style={{ height: mt }} />);
+      }
+
+      const isReclassified =
+        groupIdx > 0 &&
+        leaderSeconds !== null &&
+        group.timeSecs === leaderSeconds;
+
+      const timeLabel = (() => {
+        if (!group.items[0]?.time) return null;
+        if (leaderSeconds === null) return group.items[0].time;
+        const secs = parseTimeToSeconds(group.items[0].time);
+        if (secs === null) return null;
+        return secs === leaderSeconds
+          ? group.items[0].time
+          : formatGap(Math.max(0, secs - leaderSeconds));
+      })();
+
+      const inferredGap = isReclassified
+        ? findInferredGap(finisherRows, groupStartInFinishers, leaderSeconds!)
+        : null;
+
+      if (timeLabel) {
+        if (groupIdx === 0 && leaderSeconds !== null) {
+          leaderTimeLabel = timeLabel;
+        } else {
+          items.push(
+            <View
+              key={`header-${groupIdx}`}
+              onLayout={(e) => {
+                groupHeaderYs.current.set(groupIdx, {
+                  y: e.nativeEvent.layout.y,
+                  label: inferredGap ?? timeLabel,
+                  isReclassified,
+                });
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 4, paddingBottom: 4 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+                <View style={[styles.groupTimePill, isReclassified ? styles.groupTimePillLeader : styles.groupTimePillGap]}>
+                  {isReclassified && inferredGap ? (
+                    <Text style={styles.groupTimeTextStrikethrough}>{inferredGap}</Text>
+                  ) : (
+                    <Text style={styles.groupTimeTextGap}>{timeLabel}</Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+              </View>
+            </View>
+          );
+        }
+      }
+
+      group.items.forEach((item, i) => {
+        const idx = startIndex + i;
+        items.push(renderResultRow(item, idx, i === 0, i === group.items.length - 1));
+      });
+    });
+
+    const dnfRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNF');
+    const dnsRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNS');
+    const otherRows = dnsDnfRows.filter(
+      (r) => !['DNF', 'DNS'].includes((r.rankLabel ?? '').toUpperCase()),
+    );
+
+    let offset = globalIndex;
+    const renderNonFinisherGroup = (rows: RaceResult[], label: string, key: string) => {
+      if (rows.length === 0) return;
+      items.push(
+        <View key={`${key}-separator`} style={styles.dnsDnfSeparator}>
+          <View style={styles.dnsDnfSeparatorLine} />
+          <Text style={styles.dnsDnfSeparatorText}>{label}</Text>
+          <View style={styles.dnsDnfSeparatorLine} />
+        </View>
+      );
+      rows.forEach((item, i) => {
+        items.push(renderResultRow(item, offset + i, i === 0, i === rows.length - 1));
+      });
+      offset += rows.length;
+    };
+
+    renderNonFinisherGroup(dnfRows, 'DNF', 'dnf');
+    renderNonFinisherGroup(dnsRows, 'DNS', 'dns');
+    renderNonFinisherGroup(otherRows, 'Other', 'other');
+
     return (
-      <FlatList
-        data={activeResultRows}
-        keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
-        renderItem={renderResultRow}
-        style={styles.resultsList}
-        contentContainerStyle={styles.resultsListContent}
-        showsVerticalScrollIndicator={false}
-      />
+      <View style={styles.resultsList}>
+        {leaderTimeLabel ? (
+          <View style={{ backgroundColor: '#0A0A0C' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 6, paddingBottom: 6 }}>
+              {renderChecker(true)}
+              <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+              <View style={[styles.groupTimePill, (!activeGapLabel || activeIsReclassified) ? styles.groupTimePillLeader : null]}>
+                <Text style={[styles.groupTimeText, (!activeGapLabel || activeIsReclassified) ? styles.groupTimeTextLeader : null]}>
+                  {leaderTimeLabel}
+                </Text>
+              </View>
+              {activeGapLabel ? (
+                <>
+                  <Text style={{ color: '#3A3F52', marginHorizontal: 6, fontSize: 12 }}>·</Text>
+                  <View style={[styles.groupTimePill, activeIsReclassified ? null : styles.groupTimePillGap]}>
+                    <Text style={activeIsReclassified ? styles.groupTimeTextStrikethrough : styles.groupTimeTextGap}>
+                      {activeGapLabel}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+              <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+              {renderChecker(false)}
+            </View>
+          </View>
+        ) : null}
+        <ScrollView
+          contentContainerStyle={styles.resultsListContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            const scrollY = e.nativeEvent.contentOffset.y;
+            const entries = [...groupHeaderYs.current.values()].sort((a, b) => a.y - b.y);
+            const active = entries.filter((entry) => entry.y <= scrollY).pop();
+            setActiveGapLabel(active?.label ?? null);
+            setActiveIsReclassified(active?.isReclassified ?? false);
+          }}
+        >
+          {items}
+        </ScrollView>
+      </View>
     );
   };
 
@@ -854,12 +1210,28 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     const leaderSeconds = activeClassificationRows[0]?.time
       ? parseTimeToSeconds(activeClassificationRows[0].time)
       : null;
+    const deltaMaps: Partial<Record<ClassificationTab, Map<string, { rankChange: number; earnedPoints: number }>>> = {
+      gc: gcDeltaMap,
+      points: pointsDeltaMap,
+      kom: komDeltaMap,
+      youth: youthDeltaMap,
+      teams: teamsDeltaMap,
+    };
+    const deltaMap = deltaMaps[activeClassificationTab] ?? null;
+    const showEarnedPoints = activeClassificationTab === 'points' || activeClassificationTab === 'kom';
+    const showBonus = activeClassificationTab === 'gc' || activeClassificationTab === 'youth';
+    const delta = deltaMap?.get(item.riderName);
     return renderClassificationRow(
       item,
       index,
       activeClassificationRows.length,
       activeClassificationRows,
-      leaderSeconds
+      leaderSeconds,
+      false,
+      false,
+      delta?.rankChange,
+      showEarnedPoints ? delta?.earnedPoints : undefined,
+      showBonus ? cumulativeBonusMap.get(item.riderName) : undefined,
     );
   };
 
@@ -1266,10 +1638,131 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
   },
+  resultRowMid: {
+    borderBottomWidth: 0,
+  },
   resultRowLast: {
     borderBottomWidth: 1,
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
+  },
+  groupTimePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#1E2130',
+    borderWidth: 1,
+    borderColor: '#3A3F52',
+  },
+  groupTimePillLeader: {
+    backgroundColor: '#1C2B1E',
+    borderColor: '#4CAF50',
+  },
+  groupTimeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#C0C7D6',
+    letterSpacing: 0.5,
+  },
+  groupTimeTextLeader: {
+    color: '#4CAF50',
+  },
+  groupTimePillGap: {
+    backgroundColor: '#1A0D0D',
+    borderColor: '#4A1A1A',
+  },
+  groupTimeTextGap: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+  },
+  groupTimeTextStrikethrough: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textDecorationLine: 'line-through',
+    color: '#6b7280',
+  },
+  groupTimeTextCorrected: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+  },
+  resultSameTime: {
+    color: '#6b7280',
+    fontStyle: 'italic',
+    fontSize: 11,
+  },
+  resultTimeColumn: {
+    alignItems: 'flex-end',
+  },
+  rankChangeUp: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#4CAF50',
+    lineHeight: 11,
+  },
+  rankChangeDown: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#EF4444',
+    lineHeight: 11,
+  },
+  earnedPointsText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#6b7280',
+    textAlign: 'right',
+  },
+  bonusBadge: {
+    backgroundColor: '#1a2e1a',
+    borderWidth: 1,
+    borderColor: '#2d5a2d',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  bonusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
+  bonusBadgeNeutral: {
+    backgroundColor: '#1c1e26',
+    borderWidth: 1,
+    borderColor: '#2E3140',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    marginTop: 3,
+    alignSelf: 'flex-end',
+  },
+  bonusBadgeTextNeutral: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  dnsDnfSeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 20,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  dnsDnfSeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#2E3140',
+  },
+  dnsDnfSeparatorText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    letterSpacing: 0.5,
   },
   resultRankBadge: {
     minWidth: 32,

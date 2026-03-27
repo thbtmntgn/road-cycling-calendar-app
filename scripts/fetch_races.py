@@ -836,6 +836,7 @@ def fetch_stages(
                         "team_name",
                         "nationality",
                         "time",
+                        "bonus",
                         "status",
                     )
                 except Exception:
@@ -1026,6 +1027,10 @@ def normalize_result_rows(
             if status_value:
                 entry["status"] = status_value
 
+        bonus_value = str(row.get("bonus") or "").strip()
+        if bonus_value and bonus_value not in ("0:00:00", "0:00", "0"):
+            entry["bonus"] = bonus_value
+
         normalized.append(entry)
 
     return normalized if normalized else None
@@ -1068,7 +1073,7 @@ def fetch_results(
                 "nationality",
                 "time",
             )
-        return normalize_result_rows(raw_rows, limit=limit)
+        return normalize_result_rows(raw_rows, limit=len(raw_rows))
     except Exception as exc:
         print(f"  ! No results for {pcs_slug}: {exc}")
         return None
