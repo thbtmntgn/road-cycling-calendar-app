@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   containerAlternate: {
-    backgroundColor: '#0F1319',
+    backgroundColor: '#1A2235',
   },
   content: {
     paddingVertical: 12,
