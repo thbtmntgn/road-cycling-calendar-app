@@ -1098,14 +1098,60 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       );
     }
 
+    const timeLimitGap = stageOnSelectedDate?.timeLimitGap;
+    const timeLimitSecs = timeLimitGap ? parseTimeToSeconds(timeLimitGap) : null;
+    const timeLimitLabel = timeLimitSecs !== null ? formatGap(timeLimitSecs) : null;
+    const cutoffSeconds =
+      leaderSeconds !== null && timeLimitSecs !== null ? leaderSeconds + timeLimitSecs : null;
+    let timeLimitInserted = false;
+
+    const renderTimeLimitSeparator = () => {
+      items.push(
+        <View key="otl-separator" style={{ backgroundColor: '#0A0A0C', marginTop: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 6, paddingBottom: 6 }}>
+            {renderChecker(true)}
+            <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+            <View style={[styles.groupTimePill, { backgroundColor: '#2D1600', borderColor: '#92400E' }]}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#F59E0B', letterSpacing: 1 }}>TIME LIMIT</Text>
+            </View>
+            {timeLimitLabel ? (
+              <>
+                <Text style={{ color: '#92400E', marginHorizontal: 6, fontSize: 12 }}>·</Text>
+                <View style={[styles.groupTimePill, { backgroundColor: '#2D1600', borderColor: '#92400E' }]}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#F59E0B' }}>{timeLimitLabel}</Text>
+                </View>
+              </>
+            ) : null}
+            <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+            {renderChecker(false)}
+          </View>
+        </View>
+      );
+      timeLimitInserted = true;
+    };
+
     groups.forEach((group, groupIdx) => {
       const startIndex = globalIndex;
       const groupStartInFinishers = finisherRowOffset;
       globalIndex += group.items.length;
       finisherRowOffset += group.items.length;
 
+      // Insert the TIME LIMIT separator before the first group that exceeds the cutoff.
+      // This handles riders kept in the race by organizers despite finishing after the limit.
+      const insertedNow =
+        !timeLimitInserted &&
+        isStageResultView &&
+        cutoffSeconds !== null &&
+        group.timeSecs !== null &&
+        group.timeSecs > cutoffSeconds;
+      if (insertedNow) {
+        renderTimeLimitSeparator();
+      }
+
+      // Skip the spacer for the group immediately after the separator — marginTop: 20
+      // on the separator already provides enough breathing room.
       const mt = groupIdx === 0 ? 0 : calcMargin(interGroupGaps[groupIdx]);
-      if (mt > 0) {
+      if (mt > 0 && !insertedNow) {
         items.push(<View key={`spacer-${groupIdx}`} style={{ height: mt }} />);
       }
 
@@ -1199,40 +1245,11 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       (r) => !['OTL', 'DNF', 'DNS'].includes((r.rankLabel ?? '').toUpperCase()),
     );
 
-    // Render OTL riders grouped by time (same visual language as finisher groups) after a
-    // TIME LIMIT separator so it's clear they finished but were eliminated.
-    // Also show the separator (without OTL riders) in GC/Youth results when gap data is
-    // available, so users can gauge how close the last finishers were to the cutoff.
-    const timeLimitGap = stageOnSelectedDate?.timeLimitGap;
-    const timeLimitLabel = timeLimitGap
-      ? (() => {
-          const secs = parseTimeToSeconds(timeLimitGap);
-          return secs !== null ? formatGap(secs) : null;
-        })()
-      : null;
-    const showTimeLimitSeparator = otlRows.length > 0 || (isStageResultView && timeLimitLabel !== null);
-    if (showTimeLimitSeparator) {
-      items.push(
-        <View key="otl-separator" style={{ backgroundColor: '#0A0A0C', marginTop: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 6, paddingBottom: 6 }}>
-            {renderChecker(true)}
-            <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
-            <View style={[styles.groupTimePill, { backgroundColor: '#2D1600', borderColor: '#92400E' }]}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#F59E0B', letterSpacing: 1 }}>TIME LIMIT</Text>
-            </View>
-            {timeLimitLabel ? (
-              <>
-                <Text style={{ color: '#92400E', marginHorizontal: 6, fontSize: 12 }}>·</Text>
-                <View style={[styles.groupTimePill, { backgroundColor: '#2D1600', borderColor: '#92400E' }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#F59E0B' }}>{timeLimitLabel}</Text>
-                </View>
-              </>
-            ) : null}
-            <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
-            {renderChecker(false)}
-          </View>
-        </View>
-      );
+    // If no finisher group exceeded the cutoff (everyone within limit, or no cutoff data),
+    // fall back to rendering the separator at the bottom — before OTL rows when present,
+    // or as a reference line in GC/Youth when gap data is available.
+    if (!timeLimitInserted && (otlRows.length > 0 || (isStageResultView && timeLimitLabel !== null))) {
+      renderTimeLimitSeparator();
     }
     if (otlRows.length > 0) {
       const otlGroups = groupResultsByTime(otlRows);

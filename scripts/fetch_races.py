@@ -412,22 +412,31 @@ def _parse_time_limit_gap(parser) -> Optional[str]:
     """Extract the time limit gap (H:MM:SS from stage winner) from a PCS stage page.
 
     PCS stage result pages include a line like:
-        "Time limit: 12% (1:52:30)" or "Time limit: +1:52:30"
+        "Timelimit 14%, or 4:49:15 (+0:35:31)"  ← current PCS format: gap is (+H:MM:SS)
+        "Time limit: 12% (1:52:30)"              ← older format: gap is plain (H:MM:SS)
+        "Time limit: +1:52:30"                   ← explicit +H:MM:SS
+
+    The absolute cutoff time (4:49:15) must not be confused with the gap (0:35:31).
+    Always prefer (+H:MM:SS) first so we capture the gap, not the absolute time.
 
     Accepts a selectolax HTMLParser (detail.html from procyclingstats Stage).
-    Returns a gap string like "1:52:30", or None if not found.
+    Returns a gap string like "0:35:31", or None if not found.
     """
     try:
         for node in parser.css('li, div, p'):
             text = node.text(strip=True)
-            if 'time limit' not in text.lower():
+            if 'timelimit' not in text.lower() and 'time limit' not in text.lower():
                 continue
-            # "(H:MM:SS)" — the parenthesised gap is the most reliable format
-            m = re.search(r'\(([0-9]{1,2}:[0-9]{2}:[0-9]{2})\)', text)
+            # "(+H:MM:SS)" — current PCS format; gap is the value after the + inside parens
+            m = re.search(r'\(\+([0-9]{1,2}:[0-9]{2}:[0-9]{2})\)', text)
             if m:
                 return m.group(1)
-            # "+H:MM:SS" explicit gap format
+            # "+H:MM:SS" — explicit gap without surrounding parens
             m = re.search(r'\+([0-9]{1,2}:[0-9]{2}:[0-9]{2})', text)
+            if m:
+                return m.group(1)
+            # "(H:MM:SS)" — older format where the parenthesised value is the gap directly
+            m = re.search(r'\(([0-9]{1,2}:[0-9]{2}:[0-9]{2})\)', text)
             if m:
                 return m.group(1)
     except Exception:
