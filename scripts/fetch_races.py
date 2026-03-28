@@ -408,6 +408,33 @@ def _fetch_teams_today(stage_url: str, scraper_session) -> Optional[list]:
         return None
 
 
+def _parse_time_limit_gap(parser) -> Optional[str]:
+    """Extract the time limit gap (H:MM:SS from stage winner) from a PCS stage page.
+
+    PCS stage result pages include a line like:
+        "Time limit: 12% (1:52:30)" or "Time limit: +1:52:30"
+
+    Accepts a selectolax HTMLParser (detail.html from procyclingstats Stage).
+    Returns a gap string like "1:52:30", or None if not found.
+    """
+    try:
+        for node in parser.css('li, div, p'):
+            text = node.text(strip=True)
+            if 'time limit' not in text.lower():
+                continue
+            # "(H:MM:SS)" — the parenthesised gap is the most reliable format
+            m = re.search(r'\(([0-9]{1,2}:[0-9]{2}:[0-9]{2})\)', text)
+            if m:
+                return m.group(1)
+            # "+H:MM:SS" explicit gap format
+            m = re.search(r'\+([0-9]{1,2}:[0-9]{2}:[0-9]{2})', text)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def _parse_profile_img_url(parser) -> Optional[str]:
     """Extract the stage elevation profile image URL from a PCS stage page.
 
@@ -782,6 +809,8 @@ def fetch_stages(
     # Extract year from start_date (format "YYYY-MM-DD").
     year = start_date.split("-")[0] if start_date else ""
 
+    today_iso = date.today().isoformat()
+
     result = []
     gc_snapshots: dict[str, list] = {}
     stage_result_snapshots: dict[str, list] = {}
@@ -828,119 +857,155 @@ def fetch_stages(
                     or _parse_profile_img_url(detail.html)
                 )
 
-                try:
-                    stage_rows = detail.results(
-                        "rank",
-                        "rider_name",
-                        "rider_url",
-                        "team_name",
-                        "nationality",
-                        "time",
-                        "bonus",
-                        "status",
-                    )
-                except Exception:
-                    stage_rows = []
-                normalized_stage_results = normalize_result_rows(stage_rows, limit=len(stage_rows))
-                if normalized_stage_results:
-                    stage_result_snapshots[str(stage_number)] = normalized_stage_results
+                # Determine whether this stage has finished.
+                # Past stages (raw_date < today) are always complete.
+                # For today's stage, probe the result table: a real finish has rank 1
+                # with a valid time; DNS/DNF-only rows mean the race is still in progress.
+                stage_rows: list = []
+                time_limit_gap: Optional[str] = None
 
-                try:
-                    gc_rows = detail.gc(
-                        "rank",
-                        "rider_name",
-                        "rider_url",
-                        "team_name",
-                        "nationality",
-                        "time",
+                if raw_date and raw_date < today_iso:
+                    stage_has_completed = True
+                elif raw_date == today_iso:
+                    try:
+                        stage_rows = detail.results(
+                            "rank",
+                            "rider_name",
+                            "rider_url",
+                            "team_name",
+                            "nationality",
+                            "time",
+                            "bonus",
+                            "status",
+                        )
+                    except Exception:
+                        stage_rows = []
+                    stage_has_completed = bool(
+                        stage_rows
+                        and str(stage_rows[0].get("rank") or "").strip() == "1"
+                        and str(stage_rows[0].get("time") or "").strip()
                     )
-                except Exception:
-                    gc_rows = []
-                normalized_gc = normalize_result_rows(gc_rows, limit=len(gc_rows))
-                if normalized_gc:
-                    gc_snapshots[str(stage_number)] = normalized_gc
+                else:
+                    stage_has_completed = False
 
-                try:
-                    points_rows = detail.points(
-                        "rank",
-                        "rider_name",
-                        "rider_url",
-                        "team_name",
-                        "nationality",
-                        "points",
+                if stage_has_completed:
+                    if not stage_rows:
+                        try:
+                            stage_rows = detail.results(
+                                "rank",
+                                "rider_name",
+                                "rider_url",
+                                "team_name",
+                                "nationality",
+                                "time",
+                                "bonus",
+                                "status",
+                            )
+                        except Exception:
+                            stage_rows = []
+                    normalized_stage_results = normalize_result_rows(stage_rows, limit=len(stage_rows))
+                    if normalized_stage_results:
+                        stage_result_snapshots[str(stage_number)] = normalized_stage_results
+
+                if stage_has_completed:
+                    try:
+                        gc_rows = detail.gc(
+                            "rank",
+                            "rider_name",
+                            "rider_url",
+                            "team_name",
+                            "nationality",
+                            "time",
+                        )
+                    except Exception:
+                        gc_rows = []
+                    normalized_gc = normalize_result_rows(gc_rows, limit=len(gc_rows))
+                    if normalized_gc:
+                        gc_snapshots[str(stage_number)] = normalized_gc
+
+                    try:
+                        points_rows = detail.points(
+                            "rank",
+                            "rider_name",
+                            "rider_url",
+                            "team_name",
+                            "nationality",
+                            "points",
+                        )
+                    except Exception:
+                        points_rows = []
+                    normalized_points = normalize_result_rows(
+                        points_rows,
+                        limit=len(points_rows),
+                        value_field="points",
+                        include_status=False,
                     )
-                except Exception:
-                    points_rows = []
-                normalized_points = normalize_result_rows(
-                    points_rows,
-                    limit=len(points_rows),
-                    value_field="points",
-                    include_status=False,
-                )
-                if normalized_points:
-                    points_snapshots[str(stage_number)] = normalized_points
+                    if normalized_points:
+                        points_snapshots[str(stage_number)] = normalized_points
 
-                try:
-                    kom_rows = detail.kom(
-                        "rank",
-                        "rider_name",
-                        "rider_url",
-                        "team_name",
-                        "nationality",
-                        "points",
+                    try:
+                        kom_rows = detail.kom(
+                            "rank",
+                            "rider_name",
+                            "rider_url",
+                            "team_name",
+                            "nationality",
+                            "points",
+                        )
+                    except Exception:
+                        kom_rows = []
+                    normalized_kom = normalize_result_rows(
+                        kom_rows,
+                        limit=len(kom_rows),
+                        value_field="points",
+                        include_status=False,
                     )
-                except Exception:
-                    kom_rows = []
-                normalized_kom = normalize_result_rows(
-                    kom_rows,
-                    limit=len(kom_rows),
-                    value_field="points",
-                    include_status=False,
-                )
-                if normalized_kom:
-                    kom_snapshots[str(stage_number)] = normalized_kom
+                    if normalized_kom:
+                        kom_snapshots[str(stage_number)] = normalized_kom
 
-                try:
-                    youth_rows = detail.youth(
-                        "rank",
-                        "rider_name",
-                        "rider_url",
-                        "team_name",
-                        "nationality",
-                        "time",
+                    try:
+                        youth_rows = detail.youth(
+                            "rank",
+                            "rider_name",
+                            "rider_url",
+                            "team_name",
+                            "nationality",
+                            "time",
+                        )
+                    except Exception:
+                        youth_rows = []
+                    normalized_youth = normalize_result_rows(
+                        youth_rows,
+                        limit=len(youth_rows),
+                        include_status=False,
                     )
-                except Exception:
-                    youth_rows = []
-                normalized_youth = normalize_result_rows(
-                    youth_rows,
-                    limit=len(youth_rows),
-                    include_status=False,
-                )
-                if normalized_youth:
-                    youth_snapshots[str(stage_number)] = normalized_youth
+                    if normalized_youth:
+                        youth_snapshots[str(stage_number)] = normalized_youth
 
-                try:
-                    teams_rows = detail.teams(
-                        "rank",
-                        "team_name",
-                        "nationality",
-                        "time",
+                    try:
+                        teams_rows = detail.teams(
+                            "rank",
+                            "team_name",
+                            "nationality",
+                            "time",
+                        )
+                    except Exception:
+                        teams_rows = []
+                    normalized_teams = normalize_result_rows(
+                        teams_rows,
+                        limit=len(teams_rows),
+                        name_field="team_name",
+                        include_team_name=False,
+                        include_status=False,
                     )
-                except Exception:
-                    teams_rows = []
-                normalized_teams = normalize_result_rows(
-                    teams_rows,
-                    limit=len(teams_rows),
-                    name_field="team_name",
-                    include_team_name=False,
-                    include_status=False,
-                )
-                if normalized_teams:
-                    teams_snapshots[str(stage_number)] = normalized_teams
+                    if normalized_teams:
+                        teams_snapshots[str(stage_number)] = normalized_teams
 
-                teams_today = _fetch_teams_today(stage_url, get_thread_scraper())
-                if teams_today:
-                    teams_stage_result_snapshots[str(stage_number)] = teams_today
+                    teams_today = _fetch_teams_today(stage_url, get_thread_scraper())
+                    if teams_today:
+                        teams_stage_result_snapshots[str(stage_number)] = teams_today
+
+                    time_limit_gap = _parse_time_limit_gap(detail.html)
             except Exception:
                 pass  # leave fields empty if stage page not yet available
 
@@ -958,6 +1023,8 @@ def fetch_stages(
             stage_dict["elevation"] = elevation
         if profile_img_url:
             stage_dict["profileImageUrl"] = profile_img_url
+        if time_limit_gap:
+            stage_dict["timeLimitGap"] = time_limit_gap
         result.append(stage_dict)
 
     return (
@@ -995,13 +1062,15 @@ def normalize_result_rows(
 
         if not rider_name:
             continue
-        # Include non-finisher rows (rank=None) only when their status is explicitly DNS/DNF/OTL/DSQ
-        is_non_finisher = rank_value is None and status_str in non_finisher_statuses
+        # A row is a non-finisher when its status is DNS/DNF/OTL/DSQ regardless of rank.
+        # PCS sometimes emits DNS/DNF rows with a numeric rank before the race has run;
+        # treating these as non-finishers prevents them from appearing as "winner".
+        is_non_finisher = status_str in non_finisher_statuses
         if rank_value in (None, "") and not is_non_finisher:
             continue
 
         entry: dict = {
-            "rankLabel": str(rank_value).strip() if rank_value is not None else status_str,
+            "rankLabel": status_str if is_non_finisher else str(rank_value).strip(),
             "riderName": rider_name,
         }
 
@@ -1290,6 +1359,26 @@ def main():
             for race_id, rows in executor.map(_fetch_results, eligible_results_races):
                 if rows:
                     results_map[race_id] = rows
+
+    # Determine completed status for every race and scrub in-progress results.
+    # A one-day race is completed only when its top result has a valid rank-1 finish
+    # (not DNS/DNF). Storing in-progress results would show the wrong rider as winner.
+    for race in races:
+        end_date = race.get("endDate", "")
+        is_one_day = race.get("startDate") == race.get("endDate")
+        if is_one_day:
+            if end_date < today_iso:
+                race["completed"] = True
+            elif end_date == today_iso:
+                rows = results_map.get(race["id"], [])
+                is_finished = bool(rows and rows[0].get("rankLabel") == "1" and rows[0].get("time"))
+                race["completed"] = is_finished
+                if not is_finished:
+                    results_map.pop(race["id"], None)  # discard in-progress / pre-race data
+            else:
+                race["completed"] = False
+        else:
+            race["completed"] = end_date < today_iso
 
     print(f"\nCollected {len(results_map)} result files.")
 

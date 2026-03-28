@@ -64,6 +64,8 @@ export interface Race {
   stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt'; // one-day races only
   elevation?: number; // vertical metres, one-day races only
   profileImageUrl?: string; // PCS elevation profile image URL
+  timeLimitGap?: string; // H:MM:SS gap from stage winner beyond which riders are OTL
+  completed?: boolean;  // true once race has a confirmed rank-1 finish; false/absent = in progress or upcoming
 }
 
 // API response format
@@ -84,6 +86,7 @@ export interface Stage {
   stageType?: 'flat' | 'hilly' | 'mountain' | 'itt' | 'ttt';
   elevation?: number;  // vertical metres
   profileImageUrl?: string; // PCS elevation profile image URL
+  timeLimitGap?: string; // H:MM:SS gap from stage winner beyond which riders are OTL
 }
 
 // Startlist types

@@ -98,11 +98,15 @@ const LEADER_JERSEY_META: Record<
 const SCREEN_PADDING = 16;
 
 const parseTimeToSeconds = (time: string): number | null => {
-  const parts = time.split(':').map(Number);
+  const isNegative = time.trimStart().startsWith('-');
+  const normalized = isNegative ? time.trimStart().slice(1) : time;
+  const parts = normalized.split(':').map(Number);
   if (parts.some(isNaN)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return null;
+  let secs: number;
+  if (parts.length === 3) secs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  else if (parts.length === 2) secs = parts[0] * 60 + parts[1];
+  else return null;
+  return isNegative ? -secs : secs;
 };
 
 const formatDuration = (seconds: number): string => {
@@ -153,16 +157,24 @@ const formatGapFromTimeValue = (time: string | undefined, leaderSeconds: number 
     : formatGap(timeSeconds);
 };
 
-const formatBonus = (bonus: string | undefined): string | null => {
+// Returns { text, isMalus } so callers can choose styling.
+// Positive bonus = bonification (time reduction, green).
+// Negative bonus = malus/time penalty (time addition, red).
+const parseBonus = (bonus: string | undefined): { text: string; isMalus: boolean } | null => {
   if (!bonus) return null;
   const secs = parseTimeToSeconds(bonus);
-  if (!secs || secs === 0) return null;
-  return `−${secs}"`;
+  if (secs === null || secs === 0) return null;
+  const isMalus = secs < 0;
+  const absSecs = Math.abs(secs);
+  return { text: isMalus ? `+${absSecs}"` : `−${absSecs}"`, isMalus };
 };
 
+
 const formatBonusSecs = (secs: number | undefined): string | null => {
-  if (!secs || secs === 0) return null;
-  return `−${secs}"`;
+  if (secs === undefined || secs === null || secs === 0) return null;
+  const isMalus = secs < 0;
+  const absSecs = Math.abs(secs);
+  return isMalus ? `+${absSecs}"` : `−${absSecs}"`;
 };
 
 const findInferredGap = (
@@ -416,7 +428,8 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
   const [activeGapLabel, setActiveGapLabel] = useState<string | null>(null);
   const [activeIsReclassified, setActiveIsReclassified] = useState(false);
-  const groupHeaderYs = useRef<Map<number, { y: number; label: string; isReclassified: boolean }>>(new Map());
+  const [activeOriginalLabel, setActiveOriginalLabel] = useState<string | null>(null);
+  const groupHeaderYs = useRef<Map<number, { y: number; label: string; isReclassified: boolean; originalLabel?: string }>>(new Map());
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
   const sortedStages = [...stages].sort(compareStageOrder);
   const sortedUniqueDates = [...new Set(sortedStages.map((s) => s.date))].sort();
@@ -482,7 +495,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       for (const r of stageResultsByStage[String(s)] ?? []) {
         if (r.bonus) {
           const secs = parseTimeToSeconds(r.bonus);
-          if (secs && secs > 0) {
+          if (secs !== null && secs !== 0) {
             cumulativeBonusMap.set(r.riderName, (cumulativeBonusMap.get(r.riderName) ?? 0) + secs);
           }
         }
@@ -644,6 +657,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   useEffect(() => {
     setActiveGapLabel(null);
     setActiveIsReclassified(false);
+    setActiveOriginalLabel(null);
     groupHeaderYs.current.clear();
   }, [activeResultsTab, currentDate]);
 
@@ -950,10 +964,28 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }
 
     const DNS_DNF_LABELS = new Set(['DNS', 'DNF', 'OTL', 'DSQ', 'AB', 'NQ']);
-    const isNonFinisher = (r: RaceResult) => DNS_DNF_LABELS.has((r.rankLabel ?? '').toUpperCase());
+    const isNonFinisher = (r: RaceResult) =>
+      DNS_DNF_LABELS.has((r.rankLabel ?? '').toUpperCase()) ||
+      DNS_DNF_LABELS.has((r.status ?? '').toUpperCase());
 
     const finisherRows = activeResultRows.filter((r) => !isNonFinisher(r));
     const dnsDnfRows = activeResultRows.filter(isNonFinisher);
+
+    // No finishers means the race/stage hasn't completed yet — treat as unavailable.
+    if (finisherRows.length === 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <Ionicons name="ribbon-outline" size={40} color="#555555" />
+          <Text style={styles.emptyText}>
+            {isStageRace ? `${activeResultsLabel} results not available yet` : 'Results not available yet'}
+          </Text>
+        </View>
+      );
+    }
+
+    // Bonifications affect GC cumulative time, not stage finishing time — suppress the
+    // corrected-gap display for stage result views (Results > GC and Results > Youth).
+    const isStageResultView = isStageRace && (activeResultsTab === 'gc' || activeResultsTab === 'youth');
 
     const leaderSeconds = finisherRows[0]?.time
       ? parseTimeToSeconds(finisherRows[0].time)
@@ -1035,11 +1067,15 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             ) : null}
           </Text>
 
-          {!showPointsValue && item.bonus ? (
-            <View style={styles.bonusBadge}>
-              <Text style={styles.bonusBadgeText}>{formatBonus(item.bonus)}</Text>
-            </View>
-          ) : null}
+          {!showPointsValue && item.bonus ? (() => {
+            const parsed = parseBonus(item.bonus);
+            if (!parsed) return null;
+            return (
+              <View style={parsed.isMalus ? styles.malusBadge : styles.bonusBadge}>
+                <Text style={parsed.isMalus ? styles.malusBadgeText : styles.bonusBadgeText}>{parsed.text}</Text>
+              </View>
+            );
+          })() : null}
           {showPointsValue && item.time ? (
             <Text style={styles.resultTime} numberOfLines={1}>+{item.time}</Text>
           ) : null}
@@ -1088,8 +1124,22 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           : formatGap(Math.max(0, secs - leaderSeconds));
       })();
 
+      // Bonus seconds from the first rider in the group (sprint/intermediate bonifications).
+      const bonusSecs = (() => {
+        const b = group.items[0]?.bonus;
+        return b ? (parseTimeToSeconds(b) ?? 0) : 0;
+      })();
+
+      // For reclassified: prefer bonus-derived original gap over neighbour inference.
       const inferredGap = isReclassified
-        ? findInferredGap(finisherRows, groupStartInFinishers, leaderSeconds!)
+        ? (bonusSecs > 0 ? formatGap(bonusSecs) : findInferredGap(finisherRows, groupStartInFinishers, leaderSeconds!))
+        : null;
+
+      // Corrected-time case: rider has a bonus but their corrected time ≠ leader.
+      // Show the corrected gap (red) alongside the original gap (strikethrough).
+      const hasBonusCorrection = !isReclassified && !isStageResultView && bonusSecs !== 0 && leaderSeconds !== null && group.timeSecs !== null;
+      const originalGapLabel = hasBonusCorrection
+        ? formatGap((group.timeSecs! - leaderSeconds!) + bonusSecs)
         : null;
 
       if (timeLabel) {
@@ -1102,20 +1152,33 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
               onLayout={(e) => {
                 groupHeaderYs.current.set(groupIdx, {
                   y: e.nativeEvent.layout.y,
-                  label: inferredGap ?? timeLabel,
+                  label: hasBonusCorrection ? timeLabel : (inferredGap ?? timeLabel),
                   isReclassified,
+                  originalLabel: originalGapLabel ?? undefined,
                 });
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 4, paddingBottom: 4 }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
-                <View style={[styles.groupTimePill, isReclassified ? styles.groupTimePillLeader : styles.groupTimePillGap]}>
-                  {isReclassified && inferredGap ? (
+                {isReclassified && inferredGap ? (
+                  <View style={[styles.groupTimePill, styles.groupTimePillLeader]}>
                     <Text style={styles.groupTimeTextStrikethrough}>{inferredGap}</Text>
-                  ) : (
+                  </View>
+                ) : hasBonusCorrection && originalGapLabel ? (
+                  <>
+                    <View style={[styles.groupTimePill, styles.groupTimePillGap]}>
+                      <Text style={styles.groupTimeTextGap}>{timeLabel}</Text>
+                    </View>
+                    <Text style={{ color: '#3A3F52', marginHorizontal: 6, fontSize: 12 }}>·</Text>
+                    <View style={styles.groupTimePill}>
+                      <Text style={styles.groupTimeTextStrikethrough}>{originalGapLabel}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={[styles.groupTimePill, styles.groupTimePillGap]}>
                     <Text style={styles.groupTimeTextGap}>{timeLabel}</Text>
-                  )}
-                </View>
+                  </View>
+                )}
                 <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
               </View>
             </View>
@@ -1129,11 +1192,66 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       });
     });
 
+    const otlRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'OTL');
     const dnfRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNF');
     const dnsRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNS');
     const otherRows = dnsDnfRows.filter(
-      (r) => !['DNF', 'DNS'].includes((r.rankLabel ?? '').toUpperCase()),
+      (r) => !['OTL', 'DNF', 'DNS'].includes((r.rankLabel ?? '').toUpperCase()),
     );
+
+    // Render OTL riders grouped by time (same visual language as finisher groups) after a
+    // TIME LIMIT separator so it's clear they finished but were eliminated.
+    if (otlRows.length > 0) {
+      const timeLimitGap = stageOnSelectedDate?.timeLimitGap;
+      const timeLimitLabel = timeLimitGap
+        ? (() => {
+            const secs = parseTimeToSeconds(timeLimitGap);
+            return secs !== null ? formatGap(secs) : null;
+          })()
+        : null;
+      items.push(
+        <View key="otl-separator" style={[styles.dnsDnfSeparator, styles.timeLimitSeparator]}>
+          <View style={[styles.dnsDnfSeparatorLine, styles.timeLimitSeparatorLine]} />
+          <Text style={[styles.dnsDnfSeparatorText, styles.timeLimitSeparatorText]}>
+            {'TIME LIMIT'}{timeLimitLabel ? `  ${timeLimitLabel}` : ''}
+          </Text>
+          <View style={[styles.dnsDnfSeparatorLine, styles.timeLimitSeparatorLine]} />
+        </View>
+      );
+      const otlGroups = groupResultsByTime(otlRows);
+      let otlOffset = globalIndex;
+      otlGroups.forEach((group, groupIdx) => {
+        const otlTimeLabel = group.items[0]?.time && leaderSeconds !== null
+          ? formatGap(Math.max(0, (group.timeSecs ?? 0) - leaderSeconds))
+          : null;
+        if (otlTimeLabel && groupIdx > 0) {
+          const prevGroupSecs = otlGroups[groupIdx - 1].timeSecs ?? 0;
+          const gap = (group.timeSecs ?? 0) - prevGroupSecs;
+          const mt = gap > 0 ? Math.min(6 + Math.round((gap / maxGap) * 30), 36) : 0;
+          if (mt > 0) {
+            items.push(<View key={`otl-spacer-${groupIdx}`} style={{ height: mt }} />);
+          }
+        }
+        if (otlTimeLabel) {
+          items.push(
+            <View key={`otl-header-${groupIdx}`}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 4, paddingBottom: 4 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+                <View style={[styles.groupTimePill, styles.otlTimePillGap]}>
+                  <Text style={styles.otlTimeTextGap}>{otlTimeLabel}</Text>
+                </View>
+                <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
+              </View>
+            </View>
+          );
+        }
+        group.items.forEach((item, i) => {
+          items.push(renderResultRow(item, otlOffset, i === 0, i === group.items.length - 1));
+          otlOffset += 1;
+        });
+      });
+      globalIndex = otlOffset;
+    }
 
     let offset = globalIndex;
     const renderNonFinisherGroup = (rows: RaceResult[], label: string, key: string) => {
@@ -1175,6 +1293,14 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
                       {activeGapLabel}
                     </Text>
                   </View>
+                  {activeOriginalLabel ? (
+                    <>
+                      <Text style={{ color: '#3A3F52', marginHorizontal: 6, fontSize: 12 }}>·</Text>
+                      <View style={styles.groupTimePill}>
+                        <Text style={styles.groupTimeTextStrikethrough}>{activeOriginalLabel}</Text>
+                      </View>
+                    </>
+                  ) : null}
                 </>
               ) : null}
               <View style={{ flex: 1, height: 1, backgroundColor: '#2A2D3A', marginHorizontal: 8 }} />
@@ -1192,6 +1318,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             const active = entries.filter((entry) => entry.y <= scrollY).pop();
             setActiveGapLabel(active?.label ?? null);
             setActiveIsReclassified(active?.isReclassified ?? false);
+            setActiveOriginalLabel(active?.originalLabel ?? null);
           }}
         >
           {items}
@@ -1730,6 +1857,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4CAF50',
   },
+  malusBadge: {
+    backgroundColor: '#2e1a1a',
+    borderWidth: 1,
+    borderColor: '#5a2d2d',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  malusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
   bonusBadgeNeutral: {
     backgroundColor: '#1c1e26',
     borderWidth: 1,
@@ -1762,6 +1902,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  timeLimitSeparator: {
+    marginTop: 20,
+  },
+  timeLimitSeparatorLine: {
+    backgroundColor: '#4A3210',
+  },
+  timeLimitSeparatorText: {
+    color: '#B45309',
+    letterSpacing: 1,
+  },
+  otlTimePillGap: {
+    backgroundColor: '#1A1400',
+    borderColor: '#4A3800',
+  },
+  otlTimeTextGap: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
     letterSpacing: 0.5,
   },
   resultRankBadge: {

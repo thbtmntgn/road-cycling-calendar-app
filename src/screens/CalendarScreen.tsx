@@ -309,7 +309,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
     for (const race of filteredRaces) {
       const isOneDay = race.startDate === race.endDate;
       if (isOneDay) {
-        const results = getResultsSync(race.id);
+        const results = race.completed ? getResultsSync(race.id) : [];
         if (results.length > 0) {
           const winnerGap =
             results[1]?.time && results[0]?.time
