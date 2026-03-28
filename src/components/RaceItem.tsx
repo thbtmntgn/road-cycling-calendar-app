@@ -38,6 +38,7 @@ interface RaceItemProps {
   currentStageProgress?: number | null;
   totalStages?: number;
   completedResult?: CompletedRaceResult;
+  alternate?: boolean;
 }
 
 /** Converts "H:MM:SS" or "M:SS" to cycling notation: "3h43′33″", "1′23″", "15″" */
@@ -254,6 +255,7 @@ const RaceItem: React.FC<RaceItemProps> = ({
   currentStageProgress,
   totalStages,
   completedResult,
+  alternate = false,
 }) => {
   const isOneDay = race.startDate === race.endDate;
   const categoryColor = getCategoryAccentColor(race.category, isOneDay);
@@ -311,7 +313,7 @@ const RaceItem: React.FC<RaceItemProps> = ({
 
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.container, alternate && styles.containerAlternate]}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
@@ -468,6 +470,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E2130',
     overflow: 'hidden',
+  },
+  containerAlternate: {
+    backgroundColor: '#0F1319',
   },
   content: {
     paddingVertical: 12,

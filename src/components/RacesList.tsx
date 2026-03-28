@@ -134,7 +134,7 @@ const RacesList: React.FC<RacesListProps> = ({
               </View>
 
               <View style={styles.raceItemsContainer}>
-                {group.races.map((race) => (
+                {group.races.map((race, index) => (
                   <RaceItem
                     key={race.id}
                     race={race}
@@ -143,6 +143,7 @@ const RacesList: React.FC<RacesListProps> = ({
                     currentStageProgress={stageProgressMap?.[race.id]}
                     totalStages={stageCountsMap?.[race.id]}
                     completedResult={completedResultsMap?.[race.id]}
+                    alternate={index % 2 === 1}
                   />
                 ))}
               </View>
