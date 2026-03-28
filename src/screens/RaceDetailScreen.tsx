@@ -1098,7 +1098,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       );
     }
 
-    const timeLimitGap = stageOnSelectedDate?.timeLimitGap;
+    const timeLimitGap = stageOnSelectedDate?.timeLimitGap ?? (!isStageRace ? race.timeLimitGap : undefined);
     const timeLimitSecs = timeLimitGap ? parseTimeToSeconds(timeLimitGap) : null;
     const timeLimitLabel = timeLimitSecs !== null ? formatGap(timeLimitSecs) : null;
     const cutoffSeconds =
@@ -1241,14 +1241,15 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     const otlRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'OTL');
     const dnfRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNF');
     const dnsRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DNS');
+    const dsqRows = dnsDnfRows.filter((r) => (r.rankLabel ?? '').toUpperCase() === 'DSQ');
     const otherRows = dnsDnfRows.filter(
-      (r) => !['OTL', 'DNF', 'DNS'].includes((r.rankLabel ?? '').toUpperCase()),
+      (r) => !['OTL', 'DNF', 'DNS', 'DSQ'].includes((r.rankLabel ?? '').toUpperCase()),
     );
 
     // If no finisher group exceeded the cutoff (everyone within limit, or no cutoff data),
     // fall back to rendering the separator at the bottom — before OTL rows when present,
     // or as a reference line in GC/Youth when gap data is available.
-    if (!timeLimitInserted && (otlRows.length > 0 || (isStageResultView && timeLimitLabel !== null))) {
+    if (!timeLimitInserted && (otlRows.length > 0 || (isStageResultView && timeLimitLabel !== null) || (!isStageRace && timeLimitLabel !== null))) {
       renderTimeLimitSeparator();
     }
     if (otlRows.length > 0) {
@@ -1288,13 +1289,23 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     }
 
     let offset = globalIndex;
-    const renderNonFinisherGroup = (rows: RaceResult[], label: string, key: string) => {
+    const renderNonFinisherGroup = (
+      rows: RaceResult[],
+      label: string,
+      key: string,
+      pillStyle: object,
+      textStyle: object,
+    ) => {
       if (rows.length === 0) return;
       items.push(
-        <View key={`${key}-separator`} style={styles.dnsDnfSeparator}>
-          <View style={styles.dnsDnfSeparatorLine} />
-          <Text style={styles.dnsDnfSeparatorText}>{label}</Text>
-          <View style={styles.dnsDnfSeparatorLine} />
+        <View key={`${key}-separator`} style={{ marginTop: 20, marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: '#2E3140', marginHorizontal: 8 }} />
+            <View style={[styles.groupTimePill, pillStyle]}>
+              <Text style={[{ fontSize: 11, fontWeight: '600', letterSpacing: 1 }, textStyle]}>{label}</Text>
+            </View>
+            <View style={{ flex: 1, height: 1, backgroundColor: '#2E3140', marginHorizontal: 8 }} />
+          </View>
         </View>
       );
       rows.forEach((item, i) => {
@@ -1303,9 +1314,10 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       offset += rows.length;
     };
 
-    renderNonFinisherGroup(dnfRows, 'DNF', 'dnf');
-    renderNonFinisherGroup(dnsRows, 'DNS', 'dns');
-    renderNonFinisherGroup(otherRows, 'Other', 'other');
+    renderNonFinisherGroup(dsqRows, 'DISQUALIFIED', 'dsq', { backgroundColor: '#13141A', borderColor: '#2E3140' }, { color: '#6B7280' });
+    renderNonFinisherGroup(dnfRows, 'DID NOT FINISH', 'dnf', { backgroundColor: '#13141A', borderColor: '#2E3140' }, { color: '#6B7280' });
+    renderNonFinisherGroup(dnsRows, 'DID NOT START', 'dns', { backgroundColor: '#13141A', borderColor: '#2E3140' }, { color: '#6B7280' });
+    renderNonFinisherGroup(otherRows, 'OTHER', 'other', { backgroundColor: '#13141A', borderColor: '#2E3140' }, { color: '#6B7280' });
 
     return (
       <View style={styles.resultsList}>
@@ -1918,25 +1930,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#6b7280',
-  },
-  dnsDnfSeparator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 20,
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
-  dnsDnfSeparatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#2E3140',
-  },
-  dnsDnfSeparatorText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6B7280',
-    letterSpacing: 0.5,
   },
   otlTimePillGap: {
     backgroundColor: '#1A1400',

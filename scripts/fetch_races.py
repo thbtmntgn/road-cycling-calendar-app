@@ -1119,10 +1119,11 @@ def fetch_results(
     is_one_day_race: bool,
     delay: float = 0.0,
     limit: int = MAX_RESULT_ROWS,
-) -> Optional[list]:
+) -> tuple[Optional[list], Optional[str]]:
     """
     Fetch the top rows of the final result table for a completed race.
-    Returns a list of normalized result rows, or None if unavailable.
+    Returns (rows, time_limit_gap). Either value may be None if unavailable.
+    time_limit_gap is only parsed for one-day races (stage races get it per-stage).
     """
     from procyclingstats import Stage as PCSStage
 
@@ -1151,10 +1152,11 @@ def fetch_results(
                 "nationality",
                 "time",
             )
-        return normalize_result_rows(raw_rows, limit=len(raw_rows))
+        time_limit_gap = _parse_time_limit_gap(stage.html) if is_one_day_race else None
+        return normalize_result_rows(raw_rows, limit=len(raw_rows)), time_limit_gap
     except Exception as exc:
         print(f"  ! No results for {pcs_slug}: {exc}")
-        return None
+        return None, None
 
 
 def write_generated_data(
@@ -1349,14 +1351,14 @@ def main():
         race_id = race["id"]
         is_one_day_race = race.get("startDate") == race.get("endDate")
         print(f"  [results:{race_id}] {pcs_slug}")
-        rows = fetch_results(
+        rows, time_limit_gap = fetch_results(
             pcs_slug,
             is_one_day_race=is_one_day_race,
             delay=args.delay,
         )
         if rows:
             print(f"    Added top {len(rows)} results")
-        return race_id, rows
+        return race_id, rows, time_limit_gap
 
     if eligible_results_races:
         print(
@@ -1365,9 +1367,12 @@ def main():
         )
         result_workers = min(2, args.workers, len(eligible_results_races))
         with ThreadPoolExecutor(max_workers=result_workers) as executor:
-            for race_id, rows in executor.map(_fetch_results, eligible_results_races):
+            race_by_id = {r["id"]: r for r in eligible_results_races}
+            for race_id, rows, time_limit_gap in executor.map(_fetch_results, eligible_results_races):
                 if rows:
                     results_map[race_id] = rows
+                if time_limit_gap and race_id in race_by_id:
+                    race_by_id[race_id]["timeLimitGap"] = time_limit_gap
 
     # Determine completed status for every race and scrub in-progress results.
     # A one-day race is completed only when its top result has a valid rank-1 finish
