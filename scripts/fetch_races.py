@@ -207,8 +207,9 @@ def parse_jersey_map_from_html(html: str) -> dict[str, str]:
 
 # For NC / WC / CC / OG, exclude non-road-race and U23 events based on slug keywords.
 # Junior races are excluded later in fetch_race_details via the pcs_category string.
-SPECIAL_EVENT_EXCLUDE_KEYWORDS = ["-itt", "-tt-", "u23", "-crit"]
-JUNIOR_NAME_TOKEN_RE = re.compile(r"(^|[\s/-])(MJ|WJ)([\s/-]|$)", re.IGNORECASE)
+SPECIAL_EVENT_EXCLUDE_KEYWORDS = ["-tt-", "u23", "-crit"]
+# Matches standalone age-category tokens (MJ/WJ = junior, MU/WU = U23) in names and slugs.
+NON_ELITE_TOKEN_RE = re.compile(r"(^|[\s/-])(MJ|WJ|MU|WU)([\s/-]|$)", re.IGNORECASE)
 
 
 def parse_pcs_date(raw: str, year: int) -> str:
@@ -224,18 +225,20 @@ def parse_pcs_date(raw: str, year: int) -> str:
         return ""
 
 
-def is_junior_race(slug: str, name: str = "", pcs_category: str = "") -> bool:
+def is_non_elite_race(slug: str, name: str = "", pcs_category: str = "") -> bool:
+    """Return True if the race is for juniors, U23, or other non-elite categories."""
     slug_lower = (slug or "").lower()
     name_lower = (name or "").lower()
     pcs_category_lower = (pcs_category or "").lower()
 
-    if "junior" in slug_lower or "junior" in name_lower or "junior" in pcs_category_lower:
+    if any(kw in slug_lower for kw in ("junior", "u23", "u19")):
+        return True
+    if any(kw in name_lower for kw in ("junior", "u23", "u19")):
+        return True
+    if any(kw in pcs_category_lower for kw in ("junior", "u23", "u19")):
         return True
 
-    if "-mj" in slug_lower or "-wj" in slug_lower:
-        return True
-
-    return bool(JUNIOR_NAME_TOKEN_RE.search(name or ""))
+    return bool(NON_ELITE_TOKEN_RE.search(name or "") or NON_ELITE_TOKEN_RE.search(pcs_category or "") or NON_ELITE_TOKEN_RE.search(slug or ""))
 
 
 def fetch_race_slugs(
@@ -282,7 +285,7 @@ def fetch_race_slugs(
         slug = "/".join(parts)  # e.g. "race/tour-de-france/2026"
         race_name = link.get_text(" ", strip=True)
 
-        if is_junior_race(slug, race_name):
+        if is_non_elite_race(slug, race_name):
             continue
 
         # For special-event style classifications, skip non-senior road races.
@@ -544,7 +547,12 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
     Returns None on error (the race is skipped).
     """
     try:
-        race = Race(slug)
+        scraper = get_thread_scraper()
+        race_url = f"https://www.procyclingstats.com/{slug}"
+        resp = scraper.get(race_url, timeout=30)
+        resp.raise_for_status()
+        race_html = resp.text
+        race = Race(slug, html=race_html, update_html=False)
         name = race.name()
         start_date = race.startdate()
         end_date = race.enddate()
@@ -553,6 +561,21 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
     except Exception as exc:
         print(f"  ! Skipping {slug}: {exc}")
         return None
+
+    # Scan the race infobar for junior category indicators the library may miss
+    # due to infobar index differences (e.g. race.category() returning '').
+    # Use select_one to target only the first .list (the infobar panel), not
+    # startlist tables which may contain junior development team names.
+    infobar_soup = BeautifulSoup(race_html, "html.parser")
+    info_list = infobar_soup.select_one(".keyvalueList")
+    if info_list:
+        infobar_values = [
+            div.get_text(strip=True)
+            for li in info_list.find_all("li", recursive=False)
+            for div in li.select("div:nth-child(2)")
+        ]
+        if any(is_non_elite_race(slug, v) for v in infobar_values):
+            return None
 
     filter_group = UCI_TOUR_TO_FILTER_GROUP[uci_tour]
 
@@ -567,7 +590,7 @@ def fetch_race_details(slug: str, uci_tour: str, delay: float = 0.0) -> Optional
         gender = "Men"
 
     # Skip juniors entirely: the race-level UI only exposes elite UCI classes.
-    if is_junior_race(slug, name, pcs_category):
+    if is_non_elite_race(slug, name, pcs_category):
         return None
 
     if filter_group == "worldtour":
