@@ -212,6 +212,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
   const [stagesMap, setStagesMap] = useState<Record<string, Stage | null>>({});
   const [stageProgressMap, setStageProgressMap] = useState<Record<string, number | null>>({});
   const [stageCountsMap, setStageCountsMap] = useState<Record<string, number>>({});
+  const [allStagesMap, setAllStagesMap] = useState<Record<string, Stage[]>>({});
   const [racesViewportHeight, setRacesViewportHeight] = useState<number>(0);
   const [racesMainContentHeight, setRacesMainContentHeight] = useState<number>(0);
 
@@ -256,6 +257,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       setStagesMap({});
       setStageProgressMap({});
       setStageCountsMap({});
+      setAllStagesMap({});
       return;
     }
 
@@ -270,6 +272,7 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             return {
               id: race.id,
               stage,
+              stages,
               progress: getStageProgressIndex(stages, stage),
               total: stages.length,
             };
@@ -281,16 +284,19 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
       const map: Record<string, Stage | null> = {};
       const progressMap: Record<string, number | null> = {};
       const countsMap: Record<string, number> = {};
+      const allMap: Record<string, Stage[]> = {};
       for (const entry of entries) {
         if (entry) {
           map[entry.id] = entry.stage;
           progressMap[entry.id] = entry.progress;
           countsMap[entry.id] = entry.total;
+          allMap[entry.id] = entry.stages;
         }
       }
       setStagesMap(map);
       setStageProgressMap(progressMap);
       setStageCountsMap(countsMap);
+      setAllStagesMap(allMap);
     };
 
     loadStages();
@@ -562,7 +568,9 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
             stagesMap={stagesMap}
             stageProgressMap={stageProgressMap}
             stageCountsMap={stageCountsMap}
+            allStagesMap={allStagesMap}
             completedResultsMap={completedResultsMap}
+            onStageDatePress={handleDateSelect}
             bottomPadding={showBottomShortcut ? TODAY_SHORTCUT_BOTTOM_PADDING : 28}
             onViewportHeightChange={setRacesViewportHeight}
             onMainContentHeightChange={setRacesMainContentHeight}

@@ -12,7 +12,9 @@ interface RacesListProps {
   stagesMap?: Record<string, Stage | null>;
   stageProgressMap?: Record<string, number | null>;
   stageCountsMap?: Record<string, number>;
+  allStagesMap?: Record<string, Stage[]>;
   completedResultsMap?: Record<string, CompletedRaceResult>;
+  onStageDatePress?: (date: string) => void;
   bottomPadding?: number;
   footer?: React.ReactNode;
   onViewportHeightChange?: (height: number) => void;
@@ -79,7 +81,9 @@ const RacesList: React.FC<RacesListProps> = ({
   stagesMap,
   stageProgressMap,
   stageCountsMap,
+  allStagesMap,
   completedResultsMap,
+  onStageDatePress,
   bottomPadding = 28,
   footer,
   onViewportHeightChange,
@@ -142,7 +146,9 @@ const RacesList: React.FC<RacesListProps> = ({
                     currentStage={stagesMap ? stagesMap[race.id] : undefined}
                     currentStageProgress={stageProgressMap?.[race.id]}
                     totalStages={stageCountsMap?.[race.id]}
+                    allStages={allStagesMap?.[race.id]}
                     completedResult={completedResultsMap?.[race.id]}
+                    onStageDatePress={onStageDatePress}
                   />
                 ))}
               </View>

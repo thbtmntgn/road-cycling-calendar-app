@@ -1,11 +1,7 @@
-import React, { useState } from 'react';
-import { Dimensions, View, Text, StyleSheet, TouchableOpacity, LayoutChangeEvent } from 'react-native';
-
-// Estimate bar width upfront so dots render on the first frame (avoids flash)
-const INITIAL_BAR_WIDTH = Dimensions.get('window').width - 32; // 16px list padding each side
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
-  getCategoryAccentColor,
   RACE_SUBGROUP_COLORS,
   RaceSubgroupKey,
   StageTypeKey,
@@ -38,6 +34,8 @@ interface RaceItemProps {
   currentStageProgress?: number | null;
   totalStages?: number;
   completedResult?: CompletedRaceResult;
+  allStages?: Stage[];
+  onStageDatePress?: (date: string) => void;
 }
 
 /** Converts "H:MM:SS" or "M:SS" to cycling notation: "3h43′33″", "1′23″", "15″" */
@@ -171,77 +169,98 @@ const badgeStyles = StyleSheet.create({
   },
 });
 
-// ─── HorizontalProgressBar ────────────────────────────────────────────────────
+// ─── StageNumberRow ───────────────────────────────────────────────────────────
 
-interface HorizontalProgressBarProps {
-  current: number; // 1-based
+const StageNumberRow: React.FC<{
+  current: number;
   total: number;
-  color: string;
-}
-
-const HorizontalProgressBar: React.FC<HorizontalProgressBarProps> = ({
-  current,
-  total,
-  color,
-}) => {
-  const [barWidth, setBarWidth] = useState(INITIAL_BAR_WIDTH);
-  const progress = Math.min(current / total, 1);
-
-  return (
-    <View
-      style={progressBarStyles.wrapper}
-      onLayout={(e: LayoutChangeEvent) => setBarWidth(e.nativeEvent.layout.width)}
-    >
-      <View
-        style={[progressBarStyles.fill, { width: `${progress * 100}%`, backgroundColor: color }]}
-      />
+  stageDates?: string[];
+  onDatePress?: (date: string) => void;
+}> = ({ current, total, stageDates, onDatePress }) => (
+  <View style={stageRowStyles.strip}>
+    <View style={stageRowStyles.row}>
       {Array.from({ length: total }).map((_, i) => {
         const stageNum = i + 1;
-        const left = (stageNum / total) * barWidth;
         const isCurrent = stageNum === current;
-        const dotSize = isCurrent ? 6 : 4;
+        const isPast = stageNum < current;
+        const date = stageDates?.[i];
         return (
-          <View
+          <TouchableOpacity
             key={i}
             style={[
-              progressBarStyles.dot,
-              {
-                left: left - dotSize / 2,
-                top: (8 - dotSize) / 2,
-                width: dotSize,
-                height: dotSize,
-                borderRadius: dotSize / 2,
-                backgroundColor: isCurrent ? color : 'rgba(255,255,255,0.85)',
-                borderWidth: isCurrent ? 1.5 : 0,
-                borderColor: isCurrent ? '#FFFFFF' : 'transparent',
-              },
+              stageRowStyles.bubble,
+              isCurrent
+                ? stageRowStyles.bubbleCurrent
+                : isPast
+                  ? stageRowStyles.bubblePast
+                  : stageRowStyles.bubbleFuture,
             ]}
-          />
+            onPress={date && onDatePress ? () => onDatePress(date) : undefined}
+            activeOpacity={date && onDatePress ? 0.6 : 1}
+          >
+            <Text
+              style={[
+                stageRowStyles.bubbleText,
+                isCurrent
+                  ? stageRowStyles.bubbleTextCurrent
+                  : isPast
+                    ? stageRowStyles.bubbleTextPast
+                    : stageRowStyles.bubbleTextFuture,
+              ]}
+            >
+              {stageNum}
+            </Text>
+          </TouchableOpacity>
         );
       })}
     </View>
-  );
-};
+  </View>
+);
 
-// The wrapper IS the track — its background fills the full 8px band, no floating stripe.
-// Fill overlays from left; dots are centered: (8 - dotSize) / 2 → 6px→1, 4px→2 (integers).
-const progressBarStyles = StyleSheet.create({
-  wrapper: {
-    height: 8,
-    backgroundColor: '#1D1D22',
-    position: 'relative',
+const stageRowStyles = StyleSheet.create({
+  strip: {
+    paddingVertical: 4,
   },
-  fill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    // Only round the right end — left is flush with the card edge
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
   },
-  dot: {
-    position: 'absolute',
+  bubble: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bubbleCurrent: {
+    backgroundColor: '#5BA3D9',
+    borderColor: '#7BBDE8',
+  },
+  bubblePast: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  bubbleFuture: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  bubbleText: {
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 11,
+  },
+  bubbleTextCurrent: {
+    color: '#FFFFFF',
+  },
+  bubbleTextPast: {
+    color: 'rgba(255,255,255,0.70)',
+  },
+  bubbleTextFuture: {
+    color: 'rgba(255,255,255,0.30)',
   },
 });
 
@@ -254,10 +273,11 @@ const RaceItem: React.FC<RaceItemProps> = ({
   currentStageProgress,
   totalStages,
   completedResult,
+  allStages,
+  onStageDatePress,
 }) => {
   const isOneDay = race.startDate === race.endDate;
-  const categoryColor = getCategoryAccentColor(race.category, isOneDay);
-  const isRestDay = !isOneDay && currentStage === null;
+const isRestDay = !isOneDay && currentStage === null;
   const hasActiveStage = !isOneDay && currentStage != null;
 
   const stageType = (
@@ -302,7 +322,7 @@ const RaceItem: React.FC<RaceItemProps> = ({
       : '';
 
   const stageLabel = hasActiveStage ? formatStageLabel(currentStage!.stageNumber) : null;
-  const showProgressBar =
+  const showStageDots =
     hasActiveStage && totalStages != null && currentStageProgress != null;
   const hasRoute = !!(departure || arrival);
   const hasBottomRightTierBadge = raceTier != null;
@@ -315,14 +335,6 @@ const RaceItem: React.FC<RaceItemProps> = ({
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      {showProgressBar && (
-        <HorizontalProgressBar
-          current={currentStageProgress!}
-          total={totalStages!}
-          color={categoryColor}
-        />
-      )}
-
       <View style={styles.content}>
         {/* Row 1: flag · name (+ stage inline) · terrain tag */}
         <View style={styles.headerRow}>
@@ -341,9 +353,19 @@ const RaceItem: React.FC<RaceItemProps> = ({
           <Text style={styles.restText}>Rest day</Text>
         ) : hasRoute ? (
           <View style={styles.routeRow}>
-            {departure ? <Text style={styles.departure} numberOfLines={1}>{departure}</Text> : null}
+            {departure ? (
+              <>
+                <MaterialCommunityIcons name="map-marker-outline" size={11} color="#8AAAC8" />
+                <Text style={styles.departure} numberOfLines={1}>{departure}</Text>
+              </>
+            ) : null}
             {departure && arrival ? <Text style={styles.routeArrow}>→</Text> : null}
-            {arrival ? <Text style={styles.arrival} numberOfLines={1}>{arrival}</Text> : null}
+            {arrival ? (
+              <>
+                <MaterialCommunityIcons name="flag-checkered" size={11} color="#8AAAC8" />
+                <Text style={styles.arrival} numberOfLines={1}>{arrival}</Text>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -453,8 +475,23 @@ const RaceItem: React.FC<RaceItemProps> = ({
                   ) : null}
                 </View>
               ) : null}
+              {showStageDots && (
+                <StageNumberRow
+                  current={currentStageProgress!}
+                  total={totalStages!}
+                  stageDates={allStages?.map((s) => s.date)}
+                  onDatePress={onStageDatePress}
+                />
+              )}
             </View>
           </>
+        ) : showStageDots ? (
+          <StageNumberRow
+            current={currentStageProgress!}
+            total={totalStages!}
+            stageDates={allStages?.map((s) => s.date)}
+            onDatePress={onStageDatePress}
+          />
         ) : null}
       </View>
     </TouchableOpacity>
@@ -463,10 +500,10 @@ const RaceItem: React.FC<RaceItemProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#141820',
+    backgroundColor: '#1A2840',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1E2130',
+    borderColor: '#253A5A',
     overflow: 'hidden',
   },
   content: {
@@ -503,12 +540,12 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   departure: {
-    color: '#6B7280',
+    color: '#8AAAC8',
     fontSize: 12,
     flexShrink: 1,
   },
   routeArrow: {
-    color: '#374151',
+    color: '#8AAAC8',
     fontSize: 12,
   },
   arrival: {
@@ -540,9 +577,9 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1D1D22',
+    backgroundColor: '#111D2E',
     borderWidth: 1,
-    borderColor: '#2A2A31',
+    borderColor: '#1E2F48',
     paddingVertical: 4,
     paddingHorizontal: 7,
     borderRadius: 7,
@@ -558,7 +595,7 @@ const styles = StyleSheet.create({
 const resultStyles = StyleSheet.create({
   divider: {
     height: 1,
-    backgroundColor: '#1E2130',
+    backgroundColor: '#253A5A',
   },
   pillsRow: {
     flexDirection: 'column',
@@ -613,7 +650,7 @@ const resultStyles = StyleSheet.create({
   },
   pillMeta: {
     fontSize: 9,
-    color: '#444',
+    color: '#8AAAC8',
     marginTop: 2,
   },
   pillTimeBlock: {
@@ -637,13 +674,13 @@ const resultStyles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    color: '#444',
+    color: '#7A9ABB',
     lineHeight: 14,
   },
   pillTime: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#666',
+    color: '#C8DCF0',
     lineHeight: 14,
   },
   pillGap: {
