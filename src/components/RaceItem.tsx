@@ -30,6 +30,8 @@ export type CompletedRaceResult = {
 interface RaceItemProps {
   race: Race;
   onPress?: () => void;
+  onWinnerPress?: () => void;
+  onGcLeaderPress?: () => void;
   currentStage?: Stage | null;
   currentStageProgress?: number | null;
   totalStages?: number;
@@ -269,6 +271,8 @@ const stageRowStyles = StyleSheet.create({
 const RaceItem: React.FC<RaceItemProps> = ({
   race,
   onPress,
+  onWinnerPress,
+  onGcLeaderPress,
   currentStage,
   currentStageProgress,
   totalStages,
@@ -404,7 +408,12 @@ const isRestDay = !isOneDay && currentStage === null;
             <View style={resultStyles.divider} />
             <View style={resultStyles.pillsRow}>
               {completedResult!.winner ? (
-                <View style={[resultStyles.pill, resultStyles.winnerPill]}>
+                <TouchableOpacity
+                  style={[resultStyles.pill, resultStyles.winnerPill]}
+                  onPress={onWinnerPress ?? onPress}
+                  activeOpacity={onWinnerPress ?? onPress ? 0.7 : 1}
+                  disabled={!(onWinnerPress ?? onPress)}
+                >
                   <MaterialCommunityIcons name="trophy" size={14} color="#A07800" />
                   <View style={resultStyles.pillBody}>
                     <Text style={[resultStyles.pillLabel, resultStyles.winnerLabel]}>
@@ -438,10 +447,15 @@ const isRestDay = !isOneDay && currentStage === null;
                       </View>
                     </View>
                   ) : null}
-                </View>
+                </TouchableOpacity>
               ) : null}
               {completedResult!.gcLeader ? (
-                <View style={[resultStyles.pill, resultStyles.gcPill]}>
+                <TouchableOpacity
+                  style={[resultStyles.pill, resultStyles.gcPill]}
+                  onPress={onGcLeaderPress ?? onPress}
+                  activeOpacity={onGcLeaderPress ?? onPress ? 0.7 : 1}
+                  disabled={!(onGcLeaderPress ?? onPress)}
+                >
                   <View style={resultStyles.gcDot} />
                   <View style={resultStyles.pillBody}>
                     <Text style={[resultStyles.pillLabel, resultStyles.gcLabel]}>GC LEADER</Text>
@@ -473,7 +487,7 @@ const isRestDay = !isOneDay && currentStage === null;
                       </View>
                     </View>
                   ) : null}
-                </View>
+                </TouchableOpacity>
               ) : null}
               {showStageDots && (
                 <StageNumberRow

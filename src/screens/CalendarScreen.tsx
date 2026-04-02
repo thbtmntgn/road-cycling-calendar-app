@@ -565,6 +565,8 @@ const CalendarScreen: React.FC<Props> = ({ navigation }) => {
           <RacesList
             races={filteredRaces}
             onPressRace={handleRacePress}
+            onWinnerPress={(race) => navigation.navigate('RaceDetail', { race, selectedDate, initialTab: 'results' })}
+            onGcLeaderPress={(race) => navigation.navigate('RaceDetail', { race, selectedDate, initialTab: 'classification' })}
             stagesMap={stagesMap}
             stageProgressMap={stageProgressMap}
             stageCountsMap={stageCountsMap}

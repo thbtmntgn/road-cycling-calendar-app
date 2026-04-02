@@ -46,7 +46,7 @@ import { compareStageOrder, getStageProgressIndex } from '../utils/stageUtils';
 import { formatDateWithRelativeLabel } from '../utils/dateUtils';
 
 // Self-contained param list for CalendarStack
-type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string } };
+type RaceDetailParams = { RaceDetail: { race: Race; selectedDate?: string; initialTab?: 'results' | 'classification' } };
 
 interface RaceDetailScreenProps {
   navigation: NativeStackNavigationProp<RaceDetailParams, 'RaceDetail'>;
@@ -324,7 +324,7 @@ const TeamJersey: React.FC<TeamJerseyProps> = ({ uri }) => {
 };
 
 const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }) => {
-  const { race, selectedDate: selectedDateParam } = route.params;
+  const { race, selectedDate: selectedDateParam, initialTab } = route.params;
   const isStageRace = race.startDate !== race.endDate;
   const [currentDate, setCurrentDate] = useState(selectedDateParam ?? dayjs().format('YYYY-MM-DD'));
   const [startlist, setStartlist] = useState<StartlistTeam[]>([]);
@@ -423,7 +423,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   ).current;
 
   const teamTabsRef = useRef<FlatList<StartlistTeam>>(null);
-  const [activeTab, setActiveTab] = useState<DetailTab>('profile');
+  const [activeTab, setActiveTab] = useState<DetailTab>(initialTab ?? 'profile');
   const [activeClassificationTab, setActiveClassificationTab] = useState<ClassificationTab>('gc');
   const [activeResultsTab, setActiveResultsTab] = useState<ClassificationTab>('gc');
   const [activeGapLabel, setActiveGapLabel] = useState<string | null>(null);
@@ -718,7 +718,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       } else {
         raceHasResults = resultData.length > 0;
       }
-      setActiveTab(raceHasResults ? 'results' : 'profile');
+      if (!initialTab) setActiveTab(raceHasResults ? 'results' : 'profile');
     } catch {
       setStartlist([]);
       setResults([]);
@@ -734,7 +734,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
       setActiveClassificationTab('gc');
       setActiveResultsTab('gc');
-      setActiveTab('profile');
+      if (!initialTab) setActiveTab('profile');
       setError('Failed to load race details');
     } finally {
       setLoading(false);

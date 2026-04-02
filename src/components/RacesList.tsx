@@ -9,6 +9,8 @@ interface RacesListProps {
   races: Race[];
   showEmptyMessage?: boolean;
   onPressRace?: (race: Race) => void;
+  onWinnerPress?: (race: Race) => void;
+  onGcLeaderPress?: (race: Race) => void;
   stagesMap?: Record<string, Stage | null>;
   stageProgressMap?: Record<string, number | null>;
   stageCountsMap?: Record<string, number>;
@@ -78,6 +80,8 @@ const RacesList: React.FC<RacesListProps> = ({
   races,
   showEmptyMessage = true,
   onPressRace,
+  onWinnerPress,
+  onGcLeaderPress,
   stagesMap,
   stageProgressMap,
   stageCountsMap,
@@ -143,6 +147,8 @@ const RacesList: React.FC<RacesListProps> = ({
                     key={race.id}
                     race={race}
                     onPress={onPressRace ? () => onPressRace(race) : undefined}
+                    onWinnerPress={onWinnerPress ? () => onWinnerPress(race) : undefined}
+                    onGcLeaderPress={onGcLeaderPress ? () => onGcLeaderPress(race) : undefined}
                     currentStage={stagesMap ? stagesMap[race.id] : undefined}
                     currentStageProgress={stageProgressMap?.[race.id]}
                     totalStages={stageCountsMap?.[race.id]}
