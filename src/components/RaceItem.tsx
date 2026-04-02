@@ -266,6 +266,29 @@ const stageRowStyles = StyleSheet.create({
   },
 });
 
+// ─── Tier tile theme ──────────────────────────────────────────────────────────
+
+const TIER_TILE_BG: Record<RaceSubgroupKey, string> = {
+  'grand-tour': '#1A2330',
+  monument: '#1D2235',
+  'major-tour': '#1A2235',
+  'top-classic': '#1E1D35',
+};
+
+const TIER_BORDER_COLOR: Record<RaceSubgroupKey, string> = {
+  'grand-tour': 'rgba(110,231,247,0.55)',
+  monument: 'rgba(240,165,0,0.6)',
+  'major-tour': 'rgba(56,189,248,0.55)',
+  'top-classic': 'rgba(192,132,252,0.55)',
+};
+
+const TIER_BADGE_BG: Record<RaceSubgroupKey, string> = {
+  'grand-tour': '#001A1A',
+  monument: '#1A1000',
+  'major-tour': '#001020',
+  'top-classic': '#150015',
+};
+
 // ─── RaceItem ─────────────────────────────────────────────────────────────────
 
 const RaceItem: React.FC<RaceItemProps> = ({
@@ -333,9 +356,37 @@ const isRestDay = !isOneDay && currentStage === null;
   const isCompleted = completedResult != null;
   const isStageRaceResult = isCompleted && 'gcLeader' in completedResult!;
 
+  const hasTierTheme = raceTier !== null;
+  const tierColors = raceTier ? RACE_SUBGROUP_COLORS[raceTier] : null;
+
   return (
+    <View style={[
+      styles.outerWrapper,
+      hasTierTheme && { borderRadius: 14, borderWidth: 1, borderColor: TIER_BORDER_COLOR[raceTier!] },
+    ]}>
+      {hasTierTheme && tierColors && (
+        <View
+          style={[
+            styles.tierBorderBadge,
+            { backgroundColor: TIER_BADGE_BG[raceTier!], borderColor: tierColors.border },
+          ]}
+          pointerEvents="none"
+        >
+          <MaterialCommunityIcons
+            name={RACE_TIER_BADGE_CONFIG[raceTier!].icon}
+            size={9}
+            color={tierColors.text}
+          />
+          <Text style={[styles.tierBorderBadgeText, { color: tierColors.text }]}>
+            {tierColors.label.toUpperCase()}
+          </Text>
+        </View>
+      )}
     <TouchableOpacity
-      style={styles.container}
+      style={[
+        styles.container,
+        hasTierTheme && { backgroundColor: TIER_TILE_BG[raceTier!], borderColor: 'transparent' },
+      ]}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
@@ -396,7 +447,7 @@ const isRestDay = !isOneDay && currentStage === null;
             ) : null}
           </View>
 
-          {raceTier && hasBottomRightTierBadge ? (
+          {raceTier && hasBottomRightTierBadge && !hasTierTheme ? (
             <View style={styles.trailingBadgeWrap}>
               <RaceTierBadge tier={raceTier} compact />
             </View>
@@ -509,10 +560,32 @@ const isRestDay = !isOneDay && currentStage === null;
         ) : null}
       </View>
     </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  outerWrapper: {
+    position: 'relative',
+  },
+  tierBorderBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 5,
+  },
+  tierBorderBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
   container: {
     backgroundColor: '#1A2840',
     borderRadius: 14,
