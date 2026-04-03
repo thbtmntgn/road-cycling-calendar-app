@@ -394,13 +394,12 @@ const isRestDay = !isOneDay && currentStage === null;
         {/* Row 1: flag · name (+ stage inline) · terrain tag */}
         <View style={styles.headerRow}>
           <Text style={styles.flag}>{countryToFlag(race.country)}</Text>
-          <Text style={styles.raceName} numberOfLines={2}>
+          <Text style={[styles.raceName, hasTierTheme && race.startDate > new Date().toISOString().slice(0, 10) && styles.raceNameUpcoming]} numberOfLines={2}>
             {race.name}
             {hasActiveStage && stageLabel ? (
               <Text style={styles.stageInline}>{' · '}{stageLabel.toUpperCase()}</Text>
             ) : null}
           </Text>
-          {stageType ? <StageTypeTag type={stageType} /> : null}
         </View>
 
         {/* Row 2: route or rest day */}
@@ -439,10 +438,20 @@ const isRestDay = !isOneDay && currentStage === null;
                 <Text style={styles.chipText}>{distance} km</Text>
               </View>
             ) : null}
-            {elevation && elevation > 0 ? (
-              <View style={styles.chip}>
-                <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
-                <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
+            {(elevation && elevation > 0) || (stageType && STAGE_TYPE_CONFIG[stageType]) ? (
+              <View style={styles.chipPair}>
+                {elevation && elevation > 0 ? (
+                  <View style={styles.chip}>
+                    <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
+                    <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
+                  </View>
+                ) : null}
+                {stageType && STAGE_TYPE_CONFIG[stageType] ? (
+                  <View style={styles.chip}>
+                    <MaterialCommunityIcons name={STAGE_TYPE_CONFIG[stageType].icon} size={11} color="#8B93A1" />
+                    <Text style={styles.chipText}>{STAGE_TYPE_CONFIG[stageType].label}</Text>
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -615,6 +624,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.2,
   },
+  raceNameUpcoming: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
   stageInline: {
     fontSize: 12,
     fontWeight: '600',
@@ -657,6 +670,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 5,
     alignItems: 'center',
+  },
+  chipPair: {
+    flexDirection: 'row',
+    gap: 5,
   },
   trailingBadgeWrap: {
     flexShrink: 0,
