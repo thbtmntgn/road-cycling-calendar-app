@@ -362,7 +362,7 @@ const isRestDay = !isOneDay && currentStage === null;
   return (
     <View style={[
       styles.outerWrapper,
-      hasTierTheme && { borderRadius: 14, borderWidth: 1, borderColor: TIER_BORDER_COLOR[raceTier!] },
+      hasTierTheme && { borderRadius: 14, borderWidth: 2, borderColor: TIER_BORDER_COLOR[raceTier!] },
     ]}>
       {hasTierTheme && tierColors && (
         <View
