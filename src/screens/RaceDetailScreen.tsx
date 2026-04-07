@@ -4,14 +4,17 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Keyboard,
   PanResponder,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -430,6 +433,14 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
   const [activeIsReclassified, setActiveIsReclassified] = useState(false);
   const [activeOriginalLabel, setActiveOriginalLabel] = useState<string | null>(null);
   const groupHeaderYs = useRef<Map<number, { y: number; label: string; isReclassified: boolean; originalLabel?: string }>>(new Map());
+  const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
+  const insets = useSafeAreaInsets();
+  const classificationListRef = useRef<FlatList<RaceResult>>(null);
+  const resultsScrollRef = useRef<ScrollView>(null);
+  const resultRowYsRef = useRef<Map<string, number>>(new Map());
   const categoryColor = getCategoryAccentColor(race.category, race.startDate === race.endDate);
   const sortedStages = [...stages].sort(compareStageOrder);
   const sortedUniqueDates = [...new Set(sortedStages.map((s) => s.date))].sort();
@@ -661,6 +672,48 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
     groupHeaderYs.current.clear();
   }, [activeResultsTab, currentDate]);
 
+  useEffect(() => {
+    resultRowYsRef.current.clear();
+  }, [activeResultsTab, currentDate]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = Keyboard.addListener(showEvent, (e) => {
+      setKbHeight(Math.max(0, e.endCoordinates.height - insets.bottom));
+    });
+    const onHide = Keyboard.addListener(hideEvent, () => setKbHeight(0));
+    return () => { onShow.remove(); onHide.remove(); };
+  }, [insets.bottom]);
+
+  useEffect(() => {
+    if (!selectedAthlete) return;
+    const timer = setTimeout(() => scrollToSelectedAthlete(selectedAthlete), 100);
+    return () => clearTimeout(timer);
+  }, [activeTab, activeClassificationTab, activeResultsTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const scrollToSelectedAthlete = (name: string) => {
+    if (activeTab === 'classification') {
+      const idx = activeClassificationRows.findIndex((r) => r.riderName === name);
+      if (idx >= 0) {
+        classificationListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.3 });
+      }
+    } else if (activeTab === 'results') {
+      const y = resultRowYsRef.current.get(name);
+      if (y !== undefined) {
+        resultsScrollRef.current?.scrollTo({ y, animated: true });
+      }
+    }
+  };
+
+  const selectAthlete = (name: string) => {
+    setSelectedAthlete(name);
+    setSearchQuery(name);
+    setShowAutocomplete(false);
+    Keyboard.dismiss();
+    setTimeout(() => scrollToSelectedAthlete(name), 350);
+  };
+
   const loadRaceData = async () => {
     try {
       setLoading(true);
@@ -781,12 +834,15 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
         : (resolvedGap ?? trailingLabel);
     const isGap = index > 0 && resolvedGap !== null;
 
+    const isSelected = selectedAthlete !== null && item.riderName === selectedAthlete;
+
     return (
       <View
         style={[
           styles.resultRow,
           index === 0 ? styles.resultRowFirst : null,
           index === totalRows - 1 ? styles.resultRowLast : null,
+          isSelected ? styles.resultRowHighlighted : null,
         ]}
       >
         <View
@@ -1042,6 +1098,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
     const renderResultRow = (item: RaceResult, idx: number, isFirst: boolean, isLast: boolean) => {
       const riderFlag = getCountryFlag(item.nationality);
+      const isSelected = selectedAthlete !== null && item.riderName === selectedAthlete;
       return (
         <View
           key={`${item.rankLabel}-${item.riderName}-${idx}`}
@@ -1050,7 +1107,11 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             isFirst ? styles.resultRowFirst : null,
             isLast ? styles.resultRowLast : null,
             !isFirst && !isLast ? styles.resultRowMid : null,
+            isSelected ? styles.resultRowHighlighted : null,
           ]}
+          onLayout={(e) => {
+            resultRowYsRef.current.set(item.riderName, e.nativeEvent.layout.y);
+          }}
         >
           <View style={styles.resultRankBadge}>
             <Text style={styles.resultRankText}>{item.rankLabel}</Text>
@@ -1087,6 +1148,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
       return (
         <View style={styles.resultsList}>
           <ScrollView
+            ref={resultsScrollRef}
             contentContainerStyle={styles.resultsListContent}
             showsVerticalScrollIndicator={false}
           >
@@ -1355,6 +1417,7 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
           </View>
         ) : null}
         <ScrollView
+          ref={resultsScrollRef}
           contentContainerStyle={styles.resultsListContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
@@ -1441,12 +1504,19 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
 
     return (
       <FlatList
+        ref={classificationListRef}
         data={activeClassificationRows}
         keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
         renderItem={renderClassificationStandingRow}
         style={styles.resultsList}
         contentContainerStyle={styles.resultsListContent}
         showsVerticalScrollIndicator={false}
+        onScrollToIndexFailed={(info) => {
+          classificationListRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: true,
+          });
+        }}
       />
     );
   };
@@ -1675,6 +1745,80 @@ const RaceDetailScreen: React.FC<RaceDetailScreenProps> = ({ navigation, route }
             renderStartlist()
           )}
         </View>
+
+        {((activeTab === 'classification' && activeClassificationTab !== 'teams') ||
+          (activeTab === 'results' && activeResultsTab !== 'teams')) ? (
+          <>
+            {showAutocomplete && searchQuery.length > 0 ? (
+              <View style={styles.autocompleteList}>
+                <FlatList
+                  data={(activeTab === 'classification' ? activeClassificationRows : activeResultRows).filter(
+                    (r) => r.riderName.toLowerCase().includes(searchQuery.toLowerCase())
+                  )}
+                  keyExtractor={(item, index) => `${item.rankLabel}-${item.riderName}-${index}`}
+                  keyboardShouldPersistTaps="always"
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[
+                        styles.autocompleteRow,
+                        item.riderName === selectedAthlete ? styles.autocompleteRowSelected : null,
+                      ]}
+                      onPress={() => selectAthlete(item.riderName)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.autocompleteRank}>{item.rankLabel}</Text>
+                      <Text style={styles.autocompleteRiderName} numberOfLines={1}>{item.riderName}</Text>
+                      {item.riderName === selectedAthlete ? (
+                        <Ionicons name="checkmark" size={15} color="#4CAF50" />
+                      ) : null}
+                    </TouchableOpacity>
+                  )}
+                  contentContainerStyle={styles.autocompleteContent}
+                  showsVerticalScrollIndicator={false}
+                />
+              </View>
+            ) : null}
+            {selectedAthlete && !showAutocomplete ? (
+              <TouchableOpacity
+                style={[styles.searchBar, { marginBottom: kbHeight }]}
+                onPress={() => { setSearchQuery(''); setShowAutocomplete(true); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="person-outline" size={15} color="#4CAF50" />
+                <Text style={styles.searchSelectedName} numberOfLines={1}>{selectedAthlete}</Text>
+                <TouchableOpacity
+                  onPress={() => { setSelectedAthlete(null); setSearchQuery(''); }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={16} color="#8B93A1" />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.searchBar, { marginBottom: kbHeight }]}>
+                <Ionicons name="search-outline" size={15} color="#8B93A1" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Find athlete..."
+                  placeholderTextColor="#4A5568"
+                  value={searchQuery}
+                  onChangeText={(text) => { setSearchQuery(text); setShowAutocomplete(true); }}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+                {searchQuery ? (
+                  <TouchableOpacity
+                    onPress={() => { setSearchQuery(''); setShowAutocomplete(false); }}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={16} color="#8B93A1" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            )}
+          </>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -1818,6 +1962,70 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomLeftRadius: 18,
     borderBottomRightRadius: 18,
+  },
+  resultRowHighlighted: {
+    backgroundColor: '#0D2A10',
+    borderLeftColor: '#4CAF50',
+    borderLeftWidth: 2,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#12141A',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#252833',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#F3F4F6',
+    fontSize: 14,
+    padding: 0,
+  },
+  searchSelectedName: {
+    flex: 1,
+    color: '#F3F4F6',
+    fontSize: 14,
+  },
+  autocompleteList: {
+    backgroundColor: '#12141A',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#252833',
+    maxHeight: 240,
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  autocompleteContent: {
+    paddingVertical: 4,
+  },
+  autocompleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1D2030',
+  },
+  autocompleteRowSelected: {
+    backgroundColor: '#0D2A10',
+  },
+  autocompleteRank: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 28,
+    textAlign: 'right',
+  },
+  autocompleteRiderName: {
+    flex: 1,
+    color: '#F3F4F6',
+    fontSize: 14,
   },
   groupTimePill: {
     paddingHorizontal: 10,
