@@ -14,6 +14,7 @@ import {
 } from '../constants/racePresentation';
 import { Race, RaceResult, Stage } from '../types';
 import { formatStageLabel } from '../utils/stageUtils';
+import { convertStartTimeToLocal } from '../utils/dateUtils';
 import { countryToFlag } from '../utils/flagUtils';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -331,10 +332,10 @@ const isRestDay = !isOneDay && currentStage === null;
 
   const startTime = isOneDay
     ? race.startTime && race.startTime !== '-'
-      ? race.startTime
+      ? convertStartTimeToLocal(race.startTime, race.startDate)
       : null
     : hasActiveStage && currentStage!.startTime && currentStage!.startTime !== '-'
-      ? currentStage!.startTime
+      ? convertStartTimeToLocal(currentStage!.startTime, currentStage!.date)
       : null;
 
   const departure = hasActiveStage
@@ -365,21 +366,22 @@ const isRestDay = !isOneDay && currentStage === null;
       hasTierTheme && { borderRadius: 14, borderWidth: 2, borderColor: TIER_BORDER_COLOR[raceTier!] },
     ]}>
       {hasTierTheme && tierColors && (
-        <View
-          style={[
-            styles.tierBorderBadge,
-            { backgroundColor: TIER_BADGE_BG[raceTier!], borderColor: tierColors.border },
-          ]}
-          pointerEvents="none"
-        >
-          <MaterialCommunityIcons
-            name={RACE_TIER_BADGE_CONFIG[raceTier!].icon}
-            size={9}
-            color={tierColors.text}
-          />
-          <Text style={[styles.tierBorderBadgeText, { color: tierColors.text }]}>
-            {tierColors.label.toUpperCase()}
-          </Text>
+        <View style={styles.tierBorderBadgeContainer} pointerEvents="none">
+          <View
+            style={[
+              styles.tierBorderBadge,
+              { backgroundColor: TIER_BADGE_BG[raceTier!], borderColor: tierColors.border },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={RACE_TIER_BADGE_CONFIG[raceTier!].icon}
+              size={9}
+              color={tierColors.text}
+            />
+            <Text style={[styles.tierBorderBadgeText, { color: tierColors.text }]}>
+              {tierColors.label.toUpperCase()}
+            </Text>
+          </View>
         </View>
       )}
     <TouchableOpacity
@@ -394,33 +396,49 @@ const isRestDay = !isOneDay && currentStage === null;
         {/* Row 1: flag · name (+ stage inline) · terrain tag */}
         <View style={styles.headerRow}>
           <Text style={styles.flag}>{countryToFlag(race.country)}</Text>
-          <Text style={[styles.raceName, hasTierTheme && race.startDate > new Date().toISOString().slice(0, 10) && styles.raceNameUpcoming]} numberOfLines={2}>
+          <Text style={styles.raceName} numberOfLines={2}>
             {race.name}
-            {hasActiveStage && stageLabel ? (
-              <Text style={styles.stageInline}>{' · '}{stageLabel.toUpperCase()}</Text>
-            ) : null}
           </Text>
+          {hasActiveStage && currentStage ? (
+            <View style={styles.stageBadge}>
+              <Text style={styles.stageBadgeLabel}>STAGE</Text>
+              <View style={styles.stageBubble}>
+                <Text style={styles.stageBubbleText}>
+                  {currentStage.stageNumber === 0 ? 'P' : currentStage.stageNumber}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* Row 2: route or rest day */}
         {isRestDay ? (
           <Text style={styles.restText}>Rest day</Text>
         ) : hasRoute ? (
-          <View style={styles.routeRow}>
-            {departure ? (
-              <>
+          departure && arrival ? (
+            <View style={styles.routeRow}>
+              <View style={styles.routeCity}>
                 <MaterialCommunityIcons name="map-marker-outline" size={11} color="#8AAAC8" />
                 <Text style={styles.departure} numberOfLines={1}>{departure}</Text>
-              </>
-            ) : null}
-            {departure && arrival ? <Text style={styles.routeArrow}>→</Text> : null}
-            {arrival ? (
-              <>
-                <MaterialCommunityIcons name="flag-checkered" size={11} color="#8AAAC8" />
+              </View>
+              <View style={styles.routeConnector} />
+              <View style={styles.routeCity}>
+                <MaterialCommunityIcons name="flag-checkered" size={11} color="#C8DCF0" />
                 <Text style={styles.arrival} numberOfLines={1}>{arrival}</Text>
-              </>
-            ) : null}
-          </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.routeRow}>
+              <MaterialCommunityIcons
+                name={departure ? 'map-marker-outline' : 'flag-checkered'}
+                size={11}
+                color={departure ? '#8AAAC8' : '#C8DCF0'}
+              />
+              <Text style={departure ? styles.departure : styles.arrival} numberOfLines={1}>
+                {departure || arrival}
+              </Text>
+            </View>
+          )
         ) : null}
 
         {/* Row 3: race-specific data chips */}
@@ -438,20 +456,16 @@ const isRestDay = !isOneDay && currentStage === null;
                 <Text style={styles.chipText}>{distance} km</Text>
               </View>
             ) : null}
-            {(elevation && elevation > 0) || (stageType && STAGE_TYPE_CONFIG[stageType]) ? (
-              <View style={styles.chipPair}>
-                {elevation && elevation > 0 ? (
-                  <View style={styles.chip}>
-                    <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
-                    <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
-                  </View>
-                ) : null}
-                {stageType && STAGE_TYPE_CONFIG[stageType] ? (
-                  <View style={styles.chip}>
-                    <MaterialCommunityIcons name={STAGE_TYPE_CONFIG[stageType].icon} size={11} color="#8B93A1" />
-                    <Text style={styles.chipText}>{STAGE_TYPE_CONFIG[stageType].label}</Text>
-                  </View>
-                ) : null}
+            {elevation && elevation > 0 ? (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name="arrow-up" size={11} color="#8B93A1" />
+                <Text style={styles.chipText}>{elevation.toLocaleString()} m</Text>
+              </View>
+            ) : null}
+            {stageType && STAGE_TYPE_CONFIG[stageType] ? (
+              <View style={styles.chip}>
+                <MaterialCommunityIcons name={STAGE_TYPE_CONFIG[stageType].icon} size={11} color="#8B93A1" />
+                <Text style={styles.chipText}>{STAGE_TYPE_CONFIG[stageType].label}</Text>
               </View>
             ) : null}
           </View>
@@ -577,11 +591,15 @@ const styles = StyleSheet.create({
   outerWrapper: {
     position: 'relative',
   },
-  tierBorderBadge: {
+  tierBorderBadgeContainer: {
     position: 'absolute',
-    top: -10,
-    right: 10,
+    bottom: -10,
+    left: 0,
+    right: 0,
     zIndex: 1,
+    alignItems: 'center',
+  },
+  tierBorderBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -598,8 +616,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#1A2840',
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#253A5A',
+    borderWidth: 2,
+    borderColor: '#4F6E9E',
     overflow: 'hidden',
   },
   content: {
@@ -609,7 +627,7 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 7,
   },
   flag: {
@@ -624,34 +642,64 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.2,
   },
-  raceNameUpcoming: {
-    fontSize: 17,
-    lineHeight: 22,
+
+  stageBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
-  stageInline: {
+  stageBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: '#7BBDE8',
+  },
+  stageBubble: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5BA3D9',
+    borderColor: '#7BBDE8',
+  },
+  stageBubbleText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#A0AABB',
-    letterSpacing: 0.3,
+    fontWeight: '900',
+    lineHeight: 14,
+    color: '#FFFFFF',
   },
   routeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
+  },
+  routeCity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  routeConnector: {
+    flex: 1,
+    height: 1,
+    borderBottomWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#3A5480',
+    minWidth: 8,
   },
   departure: {
     color: '#8AAAC8',
     fontSize: 12,
+    fontWeight: '500',
     flexShrink: 1,
   },
-  routeArrow: {
-    color: '#8AAAC8',
-    fontSize: 12,
-  },
   arrival: {
-    color: '#D1D5DB',
+    color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     flexShrink: 1,
   },
   restText: {
@@ -667,20 +715,17 @@ const styles = StyleSheet.create({
   chipsWrap: {
     flex: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 5,
     alignItems: 'center',
-  },
-  chipPair: {
-    flexDirection: 'row',
-    gap: 5,
   },
   trailingBadgeWrap: {
     flexShrink: 0,
   },
   chip: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#111D2E',
     borderWidth: 1,
     borderColor: '#1E2F48',

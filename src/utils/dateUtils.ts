@@ -50,6 +50,23 @@ export const formatDateWithRelativeLabel = (dateString: string): string => {
   return formatted;
 };
 
+// Convert a PCS startTime string to the device's local timezone.
+// PCS format: "HH:MM" (local race time, no conversion possible) or
+//             "HH:MM  (HH:MM CET)" (CET = UTC+1; convert to device TZ).
+// Returns the local-time string "HH:MM", or the original if no CET annotation.
+export const convertStartTimeToLocal = (startTime: string, date: string): string => {
+  const cetMatch = startTime.match(/\((\d{2}):(\d{2})\s*CET\)/);
+  if (!cetMatch) return startTime.trim();
+  const cetHours = parseInt(cetMatch[1], 10);
+  const cetMinutes = parseInt(cetMatch[2], 10);
+  const [year, month, day] = date.split('-').map(Number);
+  // CET = UTC+1, so subtract 1 hour to get UTC
+  const utcDate = new Date(Date.UTC(year, month - 1, day, cetHours - 1, cetMinutes));
+  const localHours = utcDate.getHours().toString().padStart(2, '0');
+  const localMinutes = utcDate.getMinutes().toString().padStart(2, '0');
+  return `${localHours}:${localMinutes}`;
+};
+
 // Get today's date in YYYY-MM-DD format
 export const getTodayDate = (): string => {
   return dayjs().format('YYYY-MM-DD');
